@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
   tailwind.config = { theme: { extend: { colors: {
     ink:'#1C2321', paper:'#FAFAF8', paper2:'#F1EEE6',
@@ -30,6 +31,12 @@
   .modal-backdrop{background:rgba(28,35,33,0.45);}
   @media (max-width:767px){.desktop-only{display:none!important;}}
   @media (min-width:768px){.mobile-only{display:none!important;}}
+  #receipt-print{display:none;}
+  @media print{
+    body *{visibility:hidden;}
+    #receipt-print, #receipt-print *{visibility:visible;}
+    #receipt-print{display:block;position:absolute;top:0;left:0;width:80mm;padding:4mm;font-family:'IBM Plex Mono',monospace;font-size:11px;}
+  }
 </style>
 </head>
 <body class="bg-paper text-ink">
@@ -44,22 +51,13 @@
     </div>
     <div class="bg-white border border-line rounded-2xl p-6">
       <h2 class="font-display font-semibold mb-2">Hubungkan Google Drive</h2>
-      <p class="text-sm text-ink/60 mb-4">Masukkan Client ID OAuth dari Google Cloud Console milikmu. Lihat panduan di bagian bawah jika belum punya.</p>
-      <label class="text-xs font-medium text-ink/70">Google OAuth Client ID</label>
-      <input id="input-client-id" type="text" placeholder="xxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com" class="w-full mt-1 mb-3 px-3 py-2.5 border border-line rounded-lg text-sm font-num">
-      <button onclick="saveClientIdAndConnect()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Simpan &amp; Hubungkan Google Drive</button>
+      <p class="text-sm text-ink/60 mb-4">Data (produk, member, voucher, user, transaksi) akan disimpan sebagai file di folder "kasirku" pada Google Drive akunmu.</p>
+      <button onclick="initGoogle()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Hubungkan Google Drive</button>
       <p id="setup-error" class="text-danger text-sm mt-3 hidden"></p>
     </div>
     <details class="mt-5 bg-white border border-line rounded-2xl p-5 text-sm">
-      <summary class="font-display font-semibold cursor-pointer">Cara membuat Client ID (sekali saja)</summary>
-      <ol class="list-decimal ml-5 mt-3 space-y-2 text-ink/70">
-        <li>Buka <span class="font-num">console.cloud.google.com</span> → buat project baru.</li>
-        <li>Aktifkan <b>Google Drive API</b> (menu "APIs &amp; Services" → "Enable APIs").</li>
-        <li>Buka "APIs &amp; Services" → "OAuth consent screen" → pilih External → isi nama app "Kasirku" &amp; email → tambahkan emailmu sebagai Test user.</li>
-        <li>Buka "Credentials" → "Create Credentials" → "OAuth client ID" → tipe "Web application".</li>
-        <li>Di "Authorized JavaScript origins" tambahkan alamat tempat file ini dihosting (misal <span class="font-num">https://namakamu.github.io</span> atau <span class="font-num">http://localhost:8080</span>). File yang dibuka langsung dari <span class="font-num">file://</span> tidak akan bisa login.</li>
-        <li>Salin Client ID yang muncul, tempel di kolom atas.</li>
-      </ol>
+      <summary class="font-display font-semibold cursor-pointer">Kenapa perlu izin Google Drive?</summary>
+      <p class="mt-3 text-ink/70">Kasirku memakai Google Drive-mu sebagai database, bukan server pihak ketiga. Setelah klik "Hubungkan Google Drive", akan muncul jendela login Google — pilih akunmu, lalu izinkan akses. Karena aplikasi masih tahap testing, mungkin muncul peringatan "Google belum memverifikasi aplikasi ini" — klik <b>Advanced/Lanjutan → Buka Kasirku (unsafe)</b> untuk melanjutkan. Pastikan email akun Google-mu sudah didaftarkan sebagai Test user di Google Cloud Console.</p>
     </details>
   </div>
 </div>
@@ -88,16 +86,16 @@
 <div id="app" class="hidden min-h-screen">
   <div class="flex min-h-screen">
     <!-- Sidebar (desktop) -->
-    <aside class="desktop-only w-60 border-r border-line bg-white flex flex-col">
-      <div class="px-5 py-5 flex items-center gap-2 border-b border-line">
-        <div class="w-8 h-8 rounded-lg bg-primary text-white font-display font-bold flex items-center justify-center">K</div>
-        <span class="font-display font-bold text-lg">Kasirku</span>
+    <aside class="desktop-only w-48 border-r border-line bg-white flex flex-col">
+      <div class="px-4 py-4 flex items-center gap-2 border-b border-line">
+        <div class="w-7 h-7 rounded-lg bg-primary text-white font-display font-bold text-sm flex items-center justify-center">K</div>
+        <span class="font-display font-bold text-base">Kasirku</span>
       </div>
-      <nav id="side-nav" class="flex-1 py-4 px-3 space-y-1"></nav>
-      <div class="px-4 py-4 border-t border-line">
-        <div class="text-sm font-medium" id="side-user-name">-</div>
-        <div class="text-xs text-ink/50" id="side-user-role">-</div>
-        <button onclick="logout()" class="mt-2 text-xs text-danger hover:underline">Keluar</button>
+      <nav id="side-nav" class="flex-1 py-3 px-2.5 space-y-0.5"></nav>
+      <div class="px-3.5 py-3.5 border-t border-line">
+        <div class="text-xs font-medium" id="side-user-name">-</div>
+        <div class="text-[11px] text-ink/50" id="side-user-role">-</div>
+        <button onclick="logout()" class="mt-1.5 text-[11px] text-danger hover:underline">Keluar</button>
       </div>
     </aside>
 
@@ -140,6 +138,9 @@
   <div id="modal-box" class="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto p-6"></div>
 </div>
 
+<!-- Hidden receipt content used only when printing -->
+<div id="receipt-print"></div>
+
 <script>
 /* ============ CONFIG & STATE ============ */
 const MENUS = [
@@ -162,7 +163,8 @@ const ICONS = {
 };
 function icon(name,cls){ return `<svg class="${cls||'w-5 h-5'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
-let CLIENT_ID = localStorage.getItem('kasirku_client_id') || '';
+const GOOGLE_CLIENT_ID = '855971419916-loj02cbfbhvg81f87stseu1mb7kc2ep4.apps.googleusercontent.com';
+let CLIENT_ID = GOOGLE_CLIENT_ID;
 let tokenClient = null;
 let accessToken = null;
 let folderId = null;
@@ -178,19 +180,6 @@ function uid(){ return Date.now().toString(36) + Math.random().toString(36).slic
 function todayStr(){ return new Date().toISOString().slice(0,10); }
 
 /* ============ SETUP / OAUTH ============ */
-function saveClientIdAndConnect(){
-  const val = document.getElementById('input-client-id').value.trim();
-  const errEl = document.getElementById('setup-error');
-  if(!val.endsWith('.apps.googleusercontent.com')){
-    errEl.textContent = 'Client ID sepertinya belum benar. Pastikan formatnya diakhiri .apps.googleusercontent.com';
-    errEl.classList.remove('hidden');
-    return;
-  }
-  errEl.classList.add('hidden');
-  CLIENT_ID = val;
-  localStorage.setItem('kasirku_client_id', val);
-  initGoogle();
-}
 
 function initGoogle(){
   if(!CLIENT_ID) return;
@@ -325,8 +314,8 @@ function buildNav(){
   const role = session.user.role;
   const items = MENUS.filter(m=>m.roles.includes(role));
   const navHtml = items.map(m=>`
-    <button onclick="goPage('${m.id}')" data-nav="${m.id}" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-ink/70 hover:bg-paper2 transition">
-      ${icon(m.icon,'w-4.5 h-4.5')} <span>${m.label}</span>
+    <button onclick="goPage('${m.id}')" data-nav="${m.id}" class="w-full flex items-center gap-2.5 px-2.5 py-1.5 rounded-lg text-xs text-ink/70 hover:bg-paper2 transition">
+      ${icon(m.icon,'w-4 h-4')} <span>${m.label}</span>
     </button>`).join('');
   document.getElementById('side-nav').innerHTML = navHtml;
   document.getElementById('drawer-nav').innerHTML = navHtml;
@@ -550,30 +539,84 @@ function bayarTransaksi(){
   }
   session.cart.forEach(c=>{ const p = db.produk.find(x=>x.id===c.produkId); p.stok -= c.qty; });
   if(session.member){ session.member.poin = (session.member.poin||0) + Math.floor(total/10000); }
-  db.transaksi.push({
+  const trx = {
     id: uid(), tanggal: new Date().toISOString(),
     kasirId: session.user.id, kasirNama: session.user.nama,
     memberId: session.member?session.member.id:null, memberNama: session.member?session.member.nama:'Umum',
     items: session.cart.map(c=>({produkId:c.produkId,nama:c.nama,qty:c.qty,harga:c.harga,subtotal:c.harga*c.qty})),
     voucherKode: session.voucher?session.voucher.kode:null,
     subtotal, diskon, total, bayar, kembalian: bayar-total
-  });
+  };
+  db.transaksi.push(trx);
   session.cart = []; session.member = null; session.voucher = null;
   document.getElementById('member-hp').value=''; document.getElementById('member-info').innerHTML='';
   document.getElementById('voucher-kode').value=''; document.getElementById('voucher-info').innerHTML='';
   document.getElementById('bayar-input').value='';
   scheduleSave();
   renderProdukGrid(); renderCart();
-  alert('Transaksi berhasil. Kembalian: ' + rupiah(bayar-total));
+  tampilkanStruk(trx.id);
+}
+
+/* ============ CETAK STRUK ============ */
+function buildReceiptHtml(t){
+  const garis = '--------------------------------';
+  const items = t.items.map(i=>{
+    const kiri = i.nama.length>20 ? i.nama.slice(0,20) : i.nama;
+    const baris2 = `${i.qty} x ${rupiah(i.harga)}`;
+    const kanan = rupiah(i.subtotal);
+    return `<div>${esc(kiri)}</div><div style="display:flex;justify-content:space-between;"><span>${baris2}</span><span>${kanan}</span></div>`;
+  }).join('');
+  return `
+    <div style="text-align:center;">
+      <div style="font-weight:600;font-size:14px;">KASIRKU</div>
+      <div>${t.tanggal.slice(0,10)} ${t.tanggal.slice(11,16)}</div>
+      <div>Kasir: ${esc(t.kasirNama)}</div>
+      <div>Member: ${esc(t.memberNama||'Umum')}</div>
+    </div>
+    <div>${garis}</div>
+    ${items}
+    <div>${garis}</div>
+    <div style="display:flex;justify-content:space-between;"><span>Subtotal</span><span>${rupiah(t.subtotal)}</span></div>
+    ${t.diskon>0?`<div style="display:flex;justify-content:space-between;"><span>Diskon${t.voucherKode?' ('+esc(t.voucherKode)+')':''}</span><span>-${rupiah(t.diskon)}</span></div>`:''}
+    <div style="display:flex;justify-content:space-between;font-weight:600;"><span>Total</span><span>${rupiah(t.total)}</span></div>
+    <div style="display:flex;justify-content:space-between;"><span>Bayar</span><span>${rupiah(t.bayar)}</span></div>
+    <div style="display:flex;justify-content:space-between;"><span>Kembali</span><span>${rupiah(t.kembalian)}</span></div>
+    <div>${garis}</div>
+    <div style="text-align:center;">Terima kasih!</div>`;
+}
+function tampilkanStruk(id){
+  const t = db.transaksi.find(x=>x.id===id);
+  if(!t) return;
+  openModal(`
+    <h3 class="font-display font-semibold text-lg mb-4">Struk Transaksi</h3>
+    <div class="font-num text-xs border border-dashed border-line rounded-xl p-4 bg-paper2">${buildReceiptHtml(t)}</div>
+    <div class="flex gap-2 mt-5">
+      <button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Tutup</button>
+      <button onclick="printStruk('${t.id}')" class="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium">Cetak Struk</button>
+    </div>`);
+}
+function printStruk(id){
+  const t = db.transaksi.find(x=>x.id===id);
+  if(!t) return;
+  document.getElementById('receipt-print').innerHTML = buildReceiptHtml(t);
+  window.print();
 }
 
 /* ============ PRODUK ============ */
 function renderProduk(){
   document.getElementById('main-content').innerHTML = `
-    <div class="flex justify-between items-center mb-4">
+    <div class="flex flex-wrap justify-between items-center gap-2 mb-2">
       <input id="produk-search-tbl" oninput="renderProdukTable()" placeholder="Cari produk..." class="px-3 py-2 border border-line rounded-lg text-sm bg-white w-56">
-      <button onclick="formProduk()" class="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg">+ Tambah Produk</button>
+      <div class="flex gap-2">
+        <button onclick="downloadTemplateExcel()" class="border border-line text-ink/70 text-sm font-medium px-4 py-2 rounded-lg">Unduh Template</button>
+        <label class="bg-amber hover:bg-amber-dark text-white text-sm font-medium px-4 py-2 rounded-lg cursor-pointer">
+          Upload Excel
+          <input id="produk-excel-input" type="file" accept=".xlsx,.xls,.csv" class="hidden" onchange="handleExcelUpload(event)">
+        </label>
+        <button onclick="formProduk()" class="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg">+ Tambah Produk</button>
+      </div>
     </div>
+    <p class="text-xs text-ink/40 mb-4">Kolom Excel: <span class="font-num">nama, kategori, harga, stok, barcode</span>. Produk dengan barcode/nama yang sudah ada akan diperbarui, sisanya ditambahkan baru.</p>
     <div class="bg-white border border-line rounded-2xl overflow-x-auto">
       <table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line">
         <th class="p-3">Nama</th><th class="p-3">Kategori</th><th class="p-3">Harga</th><th class="p-3">Stok</th><th class="p-3">Barcode</th><th class="p-3"></th>
@@ -620,6 +663,50 @@ function simpanProduk(id){
   scheduleSave(); closeModal(); renderProdukTable();
 }
 function hapusProduk(id){ if(confirm('Hapus produk ini?')){ db.produk = db.produk.filter(x=>x.id!==id); scheduleSave(); renderProdukTable(); } }
+
+function downloadTemplateExcel(){
+  const ws = XLSX.utils.json_to_sheet([
+    {nama:'Contoh Produk A', kategori:'Minuman', harga:5000, stok:20, barcode:'8991234560001'},
+    {nama:'Contoh Produk B', kategori:'Makanan', harga:12000, stok:10, barcode:''}
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Produk');
+  XLSX.writeFile(wb, 'template-produk-kasirku.xlsx');
+}
+
+function handleExcelUpload(evt){
+  const file = evt.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = (e)=>{
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, {defval:''});
+      let ditambah = 0, diperbarui = 0, dilewati = 0;
+      rows.forEach(r=>{
+        const nama = String(r.nama||r.Nama||r.NAMA||'').trim();
+        if(!nama){ dilewati++; return; }
+        const kategori = String(r.kategori||r.Kategori||'').trim();
+        const harga = parseFloat(r.harga||r.Harga||0)||0;
+        const stok = parseInt(r.stok||r.Stok||0)||0;
+        const barcode = String(r.barcode||r.Barcode||'').trim();
+        let existing = null;
+        if(barcode) existing = db.produk.find(p=>p.barcode && p.barcode===barcode);
+        if(!existing) existing = db.produk.find(p=>p.nama.toLowerCase()===nama.toLowerCase());
+        if(existing){ Object.assign(existing,{nama,kategori,harga,stok,barcode}); diperbarui++; }
+        else{ db.produk.push({id:uid(),nama,kategori,harga,stok,barcode}); ditambah++; }
+      });
+      scheduleSave();
+      renderProdukTable();
+      alert(`Impor selesai.\nDitambah: ${ditambah}\nDiperbarui: ${diperbarui}\nDilewati (tanpa nama): ${dilewati}`);
+    }catch(err){
+      alert('Gagal membaca file Excel: ' + err.message);
+    }
+    evt.target.value = '';
+  };
+  reader.readAsArrayBuffer(file);
+}
 
 /* ============ MEMBER ============ */
 function renderMember(){
@@ -752,7 +839,7 @@ function renderLaporan(){
     </div>
     <div class="bg-white border border-line rounded-2xl overflow-x-auto">
       <table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line">
-        <th class="p-3">Tanggal</th><th class="p-3">Kasir</th><th class="p-3">Member</th><th class="p-3">Item</th><th class="p-3">Voucher</th><th class="p-3">Diskon</th><th class="p-3">Total</th>
+        <th class="p-3">Tanggal</th><th class="p-3">Kasir</th><th class="p-3">Member</th><th class="p-3">Item</th><th class="p-3">Voucher</th><th class="p-3">Diskon</th><th class="p-3">Total</th><th class="p-3"></th>
       </tr></thead><tbody id="laporan-tbody"></tbody></table>
     </div>
     <div id="laporan-total" class="text-right font-num text-sm mt-3 font-semibold"></div>`;
@@ -775,7 +862,8 @@ function renderLaporanTable(){
       <td class="p-3 font-num text-xs">${t.voucherKode?esc(t.voucherKode):'-'}</td>
       <td class="p-3 font-num">${rupiah(t.diskon||0)}</td>
       <td class="p-3 font-num font-medium">${rupiah(t.total)}</td>
-    </tr>`).join('') || `<tr><td colspan="7" class="p-6 text-center text-ink/40">Tidak ada transaksi pada rentang ini.</td></tr>`;
+      <td class="p-3 text-right"><button onclick="tampilkanStruk('${t.id}')" class="text-primary text-xs">Cetak</button></td>
+    </tr>`).join('') || `<tr><td colspan="8" class="p-6 text-center text-ink/40">Tidak ada transaksi pada rentang ini.</td></tr>`;
   document.getElementById('laporan-total').textContent = 'Total: ' + rupiah(list.reduce((s,t)=>s+t.total,0)) + ' (' + list.length + ' transaksi)';
 }
 
@@ -838,11 +926,7 @@ function hapusUser(id){
 }
 
 /* ============ INIT ============ */
-window.addEventListener('DOMContentLoaded', ()=>{
-  if(CLIENT_ID){
-    document.getElementById('input-client-id').value = CLIENT_ID;
-  }
-});
+window.addEventListener('DOMContentLoaded', ()=>{});
 </script>
 </body>
 </html>

@@ -48,28 +48,25 @@
     <div class="mb-8 text-center">
       <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary text-white font-display font-bold text-2xl mb-3">K</div>
       <h1 class="font-display text-2xl font-bold">Kasirku</h1>
-      <p class="text-sm text-ink/60 mt-1">Aplikasi kasir dengan database tersimpan di Google Drive-mu sendiri</p>
+      <p class="text-sm text-ink/60 mt-1">Aplikasi Kasirku Memberi Kemudahan</p>
     </div>
     <div class="bg-white border border-line rounded-2xl p-6">
-      <h2 class="font-display font-semibold mb-2">Menghubungkan Google Drive...</h2>
-      <p class="text-sm text-ink/60 mb-4">Kasirku sedang otomatis meminta izin akses ke Google Drive-mu. Jika jendela login tidak muncul (biasanya karena diblokir browser), klik tombol di bawah ini.</p>
+      <h2 class="font-display font-semibold mb-2">Menghubungkan DataBase...</h2>
+      <p class="text-sm text-ink/60 mb-4">Kasirku sedang otomatis meminta izin akses. Jika jendela login tidak muncul (biasanya karena diblokir browser), klik tombol di bawah ini.</p>
       <button onclick="initGoogle()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Hubungkan Google Drive</button>
       <p id="setup-error" class="text-danger text-sm mt-3 hidden"></p>
     </div>
-    <details class="mt-5 bg-white border border-line rounded-2xl p-5 text-sm">
-      <summary class="font-display font-semibold cursor-pointer">Kenapa perlu izin Google Drive?</summary>
-      <p class="mt-3 text-ink/70">Kasirku memakai Google Drive-mu sebagai database, bukan server pihak ketiga. Setelah klik "Hubungkan Google Drive", akan muncul jendela login Google — pilih akunmu, lalu izinkan akses. Karena aplikasi masih tahap testing, mungkin muncul peringatan "Google belum memverifikasi aplikasi ini" — klik <b>Advanced/Lanjutan → Buka Kasirku (unsafe)</b> untuk melanjutkan. Pastikan email akun Google-mu sudah didaftarkan sebagai Test user di Google Cloud Console.</p>
-    </details>
+    
   </div>
 </div>
 
-<!-- APP LOGIN SCREEN (after Drive connected) -->
+<!-- APP LOGIN SCREEN (after Database connected) -->
 <div id="login-screen" class="min-h-screen hidden items-center justify-center p-6">
   <div class="w-full max-w-sm">
     <div class="mb-8 text-center">
       <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary text-white font-display font-bold text-2xl mb-3">K</div>
       <h1 class="font-display text-2xl font-bold">Masuk ke Kasirku</h1>
-      <p id="drive-status" class="text-sm text-primary mt-1">Google Drive tersambung</p>
+      <p id="drive-status" class="text-sm text-primary mt-1">DataBase tersambung</p>
     </div>
     <div class="bg-white border border-line rounded-2xl p-6">
       <label class="text-xs font-medium text-ink/70">Username</label>
@@ -78,7 +75,6 @@
       <input id="login-password" type="password" class="w-full mt-1 mb-4 px-3 py-2.5 border border-line rounded-lg text-sm">
       <button onclick="doLogin()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Masuk</button>
       <p id="login-error" class="text-danger text-sm mt-3 hidden"></p>
-      <p class="text-xs text-ink/40 mt-4">Akun bawaan pertama kali: <span class="font-num">admin / admin123</span> — segera ganti di menu User.</p>
     </div>
   </div>
 </div>

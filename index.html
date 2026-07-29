@@ -9,6 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script>
   tailwind.config = { theme: { extend: { colors: {
     ink:'#1C2321', paper:'#FAFAF8', paper2:'#F1EEE6',
@@ -50,8 +51,8 @@
       <p class="text-sm text-ink/60 mt-1">Aplikasi kasir dengan database tersimpan di Google Drive-mu sendiri</p>
     </div>
     <div class="bg-white border border-line rounded-2xl p-6">
-      <h2 class="font-display font-semibold mb-2">Hubungkan Google Drive</h2>
-      <p class="text-sm text-ink/60 mb-4">Data (produk, member, voucher, user, transaksi) akan disimpan sebagai file di folder "kasirku" pada Google Drive akunmu.</p>
+      <h2 class="font-display font-semibold mb-2">Menghubungkan Google Drive...</h2>
+      <p class="text-sm text-ink/60 mb-4">Kasirku sedang otomatis meminta izin akses ke Google Drive-mu. Jika jendela login tidak muncul (biasanya karena diblokir browser), klik tombol di bawah ini.</p>
       <button onclick="initGoogle()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Hubungkan Google Drive</button>
       <p id="setup-error" class="text-danger text-sm mt-3 hidden"></p>
     </div>
@@ -144,9 +145,10 @@
 <script>
 /* ============ CONFIG & STATE ============ */
 const MENUS = [
-  {id:'dashboard', label:'Dashboard', icon:'grid', roles:['admin','kasir']},
+  {id:'dashboard', label:'Dashboard', icon:'grid', roles:['admin']},
   {id:'kasir', label:'Kasir', icon:'cart', roles:['admin','kasir']},
   {id:'produk', label:'Produk', icon:'box', roles:['admin','kasir']},
+  {id:'kategori', label:'Kategori', icon:'layers', roles:['admin','kasir']},
   {id:'member', label:'Member', icon:'users', roles:['admin','kasir']},
   {id:'diskon', label:'Diskon', icon:'tag', roles:['admin']},
   {id:'laporan', label:'Laporan', icon:'chart', roles:['admin','kasir']},
@@ -156,6 +158,7 @@ const ICONS = {
   grid:'<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/>',
   cart:'<path d="M3 4h2l2.4 11h11.2L21 8H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/>',
   box:'<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
+  layers:'<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
   users:'<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14c2.8 0 5.5 1.8 6 4.5"/>',
   tag:'<path d="M20 12l-8 8-9-9V3h8l9 9z"/><circle cx="7.5" cy="7.5" r="1.3"/>',
   chart:'<path d="M4 20V10M11 20V4M18 20v-7"/>',
@@ -171,8 +174,8 @@ let folderId = null;
 let fileId = null;
 let saveTimer = null;
 
-let db = { produk:[], member:[], voucher:[], user:[], transaksi:[] };
-let session = { user:null, page:'dashboard', cart:[], member:null, voucher:null };
+let db = { produk:[], kategori:[], member:[], voucher:[], user:[], transaksi:[] };
+let session = { user:null, page:'dashboard', cart:[], member:null, voucher:null, kategoriFilter:null };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function rupiah(n){ return 'Rp' + Math.round(n||0).toLocaleString('id-ID'); }
@@ -239,7 +242,7 @@ async function ensureDriveFile(){
   if(data.files && data.files.length){ fileId = data.files[0].id; }
   else{
     const defaultDb = {
-      produk:[], member:[], voucher:[],
+      produk:[], kategori:['Minuman','Makanan','Snack','Lainnya'], member:[], voucher:[],
       user:[{id:uid(), username:'admin', password:'admin123', nama:'Administrator', role:'admin'}],
       transaksi:[]
     };
@@ -257,7 +260,7 @@ async function loadFromDrive(){
   const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
   const text = await res.text();
   try{ db = JSON.parse(text); }catch(e){ db = {produk:[],member:[],voucher:[],user:[],transaksi:[]}; }
-  db.produk = db.produk||[]; db.member = db.member||[]; db.voucher = db.voucher||[];
+  db.produk = db.produk||[]; db.kategori = db.kategori||[]; db.member = db.member||[]; db.voucher = db.voucher||[];
   db.user = db.user||[]; db.transaksi = db.transaksi||[];
   localStorage.setItem('kasirku_cache', JSON.stringify(db));
 }
@@ -298,7 +301,8 @@ function doLogin(){
   document.getElementById('login-screen').classList.remove('flex');
   document.getElementById('app').classList.remove('hidden');
   buildNav();
-  goPage('dashboard');
+  const firstMenu = MENUS.find(m=>m.roles.includes(session.user.role));
+  goPage(firstMenu ? firstMenu.id : 'kasir');
 }
 function logout(){
   session.user = null;
@@ -341,8 +345,8 @@ function goPage(id){
     el.classList.toggle('nav-active', el.dataset.nav===id);
   });
   document.getElementById('page-title').textContent = (menu?menu.label:'Dashboard');
-  const renderers = {dashboard:renderDashboard, kasir:renderKasir, produk:renderProduk, member:renderMember, diskon:renderDiskon, laporan:renderLaporan, user:renderUser};
-  (renderers[id]||renderDashboard)();
+  const renderers = {dashboard:renderDashboard, kasir:renderKasir, produk:renderProduk, kategori:renderKategori, member:renderMember, diskon:renderDiskon, laporan:renderLaporan, user:renderUser};
+  (renderers[id]||renderKasir)();
 }
 
 /* ============ MODAL HELPER ============ */
@@ -356,12 +360,29 @@ function closeModal(){
   document.getElementById('modal-backdrop').classList.remove('flex');
 }
 
-/* ============ DASHBOARD ============ */
+/* ============ DASHBOARD (admin only) ============ */
+let chartMingguan=null, chartBulanan=null, chartKategori=null;
+function fmtTanggalPendek(d){ return d.toLocaleDateString('id-ID',{weekday:'short',day:'2-digit'}); }
+function last7Days(){
+  const arr=[];
+  for(let i=6;i>=0;i--){ const d=new Date(); d.setDate(d.getDate()-i); arr.push(d); }
+  return arr;
+}
+function last12Months(){
+  const arr=[];
+  for(let i=11;i>=0;i--){ const d=new Date(); d.setMonth(d.getMonth()-i); d.setDate(1); arr.push(d); }
+  return arr;
+}
 function renderDashboard(){
+  if(session.user.role!=='admin'){
+    document.getElementById('main-content').innerHTML = `<div class="bg-white border border-line rounded-2xl p-8 text-center text-ink/50">Menu ini hanya dapat diakses oleh admin.</div>`;
+    return;
+  }
   const today = todayStr();
   const trToday = db.transaksi.filter(t=>t.tanggal.slice(0,10)===today);
   const totalHariIni = trToday.reduce((s,t)=>s+t.total,0);
   const jumlahTr = trToday.length;
+  const rataRata = jumlahTr? Math.round(totalHariIni/jumlahTr) : 0;
   const stokMenipis = db.produk.filter(p=>p.stok<=5);
   const counter = {};
   db.transaksi.forEach(t=>t.items.forEach(it=>{ counter[it.nama]=(counter[it.nama]||0)+it.qty; }));
@@ -372,8 +393,25 @@ function renderDashboard(){
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
       ${statCard('Penjualan Hari Ini', rupiah(totalHariIni), 'primary')}
       ${statCard('Transaksi Hari Ini', jumlahTr, 'amber')}
-      ${statCard('Total Produk', db.produk.length, 'ink')}
+      ${statCard('Rata-rata / Transaksi', rupiah(rataRata), 'ink')}
       ${statCard('Stok Menipis', stokMenipis.length, 'danger')}
+    </div>
+    <div class="grid lg:grid-cols-3 gap-4 mb-4">
+      <div class="lg:col-span-2 bg-white border border-line rounded-2xl p-5">
+        <h3 class="font-display font-semibold mb-1">Tren Penjualan 7 Hari Terakhir</h3>
+        <p class="text-xs text-ink/40 mb-3">Total penjualan per hari</p>
+        <div style="height:220px"><canvas id="chart-mingguan"></canvas></div>
+      </div>
+      <div class="bg-white border border-line rounded-2xl p-5">
+        <h3 class="font-display font-semibold mb-1">Penjualan per Kategori</h3>
+        <p class="text-xs text-ink/40 mb-3">30 hari terakhir</p>
+        <div style="height:220px"><canvas id="chart-kategori"></canvas></div>
+      </div>
+    </div>
+    <div class="bg-white border border-line rounded-2xl p-5 mb-4">
+      <h3 class="font-display font-semibold mb-1">Tren Penjualan Bulanan</h3>
+      <p class="text-xs text-ink/40 mb-3">12 bulan terakhir</p>
+      <div style="height:240px"><canvas id="chart-bulanan"></canvas></div>
     </div>
     <div class="grid md:grid-cols-2 gap-4">
       <div class="bg-white border border-line rounded-2xl p-5">
@@ -390,6 +428,56 @@ function renderDashboard(){
       <div class="flex flex-wrap gap-2">${stokMenipis.map(p=>`<span class="text-xs bg-white border border-danger/30 text-danger px-2.5 py-1 rounded-full">${esc(p.nama)}: ${p.stok}</span>`).join('')}</div>
     </div>`:''}
   `;
+  renderChartMingguan();
+  renderChartBulanan();
+  renderChartKategori();
+}
+function renderChartMingguan(){
+  const days = last7Days();
+  const labels = days.map(fmtTanggalPendek);
+  const data = days.map(d=>{
+    const key = d.toISOString().slice(0,10);
+    return db.transaksi.filter(t=>t.tanggal.slice(0,10)===key).reduce((s,t)=>s+t.total,0);
+  });
+  if(chartMingguan) chartMingguan.destroy();
+  chartMingguan = new Chart(document.getElementById('chart-mingguan'), {
+    type:'line',
+    data:{ labels, datasets:[{ label:'Penjualan', data, borderColor:'#1B6B4D', backgroundColor:'#1B6B4D22', fill:true, tension:0.3, pointRadius:3 }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:v=>rupiah(v)}}} }
+  });
+}
+function renderChartBulanan(){
+  const months = last12Months();
+  const labels = months.map(d=>d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'}));
+  const data = months.map(d=>{
+    const y=d.getFullYear(), m=d.getMonth();
+    return db.transaksi.filter(t=>{ const td=new Date(t.tanggal); return td.getFullYear()===y && td.getMonth()===m; }).reduce((s,t)=>s+t.total,0);
+  });
+  if(chartBulanan) chartBulanan.destroy();
+  chartBulanan = new Chart(document.getElementById('chart-bulanan'), {
+    type:'bar',
+    data:{ labels, datasets:[{ label:'Penjualan', data, backgroundColor:'#D9A441' }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{ticks:{callback:v=>rupiah(v)}}} }
+  });
+}
+function renderChartKategori(){
+  const batas = new Date(); batas.setDate(batas.getDate()-30);
+  const perKategori = {};
+  db.transaksi.filter(t=>new Date(t.tanggal)>=batas).forEach(t=>{
+    t.items.forEach(it=>{
+      const p = db.produk.find(x=>x.id===it.produkId);
+      const kat = p ? (p.kategori||'Lainnya') : 'Lainnya';
+      perKategori[kat] = (perKategori[kat]||0) + it.subtotal;
+    });
+  });
+  const labels = Object.keys(perKategori);
+  const data = Object.values(perKategori);
+  if(chartKategori) chartKategori.destroy();
+  chartKategori = new Chart(document.getElementById('chart-kategori'), {
+    type:'doughnut',
+    data:{ labels: labels.length?labels:['Belum ada data'], datasets:[{ data: data.length?data:[1], backgroundColor:['#1B6B4D','#D9A441','#C0483C','#134F39','#B8862F','#8A8578'] }]},
+    options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom', labels:{boxWidth:10,font:{size:10}}}} }
+  });
 }
 function statCard(label,val,color){
   const bg = color==='primary'?'bg-primary text-white':color==='amber'?'bg-amber text-white':color==='danger'?'bg-danger text-white':'bg-white border border-line text-ink';
@@ -401,7 +489,8 @@ function renderKasir(){
   const html = `
   <div class="grid lg:grid-cols-3 gap-4">
     <div class="lg:col-span-2">
-      <input id="kasir-search" oninput="renderProdukGrid()" placeholder="Cari produk / barcode..." class="w-full mb-3 px-3 py-2.5 border border-line rounded-lg text-sm bg-white">
+      <input id="kasir-search" oninput="renderProdukGrid()" placeholder="Cari produk..." class="w-full mb-3 px-3 py-2.5 border border-line rounded-lg text-sm bg-white">
+      <div id="kategori-chips" class="flex flex-wrap gap-2 mb-3"></div>
       <div id="produk-grid" class="grid grid-cols-2 sm:grid-cols-3 gap-3"></div>
     </div>
     <div class="bg-white border border-line rounded-2xl p-4 h-fit lg:sticky lg:top-20">
@@ -435,16 +524,31 @@ function renderKasir(){
     </div>
   </div>`;
   document.getElementById('main-content').innerHTML = html;
+  session.kategoriFilter = null;
+  renderKategoriChips();
   renderProdukGrid();
   renderCart();
 }
+function renderKategoriChips(){
+  const chips = ['Semua', ...db.kategori];
+  document.getElementById('kategori-chips').innerHTML = chips.map(c=>{
+    const active = (c==='Semua' && !session.kategoriFilter) || session.kategoriFilter===c;
+    return `<button onclick="pilihKategoriFilter(${c==='Semua'?'null':`'${esc(c).replace(/'/g,"\\'")}'`})" class="px-3.5 py-1.5 rounded-full text-xs font-medium border ${active?'bg-ink text-white border-ink':'bg-white text-ink/60 border-line'}">${esc(c)}</button>`;
+  }).join('');
+}
+function pilihKategoriFilter(kategori){
+  session.kategoriFilter = kategori;
+  renderKategoriChips();
+  renderProdukGrid();
+}
 function renderProdukGrid(){
   const q = (document.getElementById('kasir-search').value||'').toLowerCase();
-  const list = db.produk.filter(p=> p.nama.toLowerCase().includes(q) || (p.barcode||'').includes(q));
+  let list = db.produk.filter(p=> p.nama.toLowerCase().includes(q));
+  if(session.kategoriFilter) list = list.filter(p=>p.kategori===session.kategoriFilter);
   document.getElementById('produk-grid').innerHTML = list.map(p=>`
     <button onclick="tambahKeranjang('${p.id}')" ${p.stok<=0?'disabled':''} class="text-left bg-white border border-line rounded-xl p-3 hover:border-primary transition disabled:opacity-40">
-      <div class="text-sm font-medium leading-snug">${esc(p.nama)}</div>
-      <div class="text-xs text-ink/50 mt-1">${esc(p.kategori||'-')}</div>
+      <div class="text-[10px] font-semibold uppercase tracking-wide text-primary">${esc(p.kategori||'-')}</div>
+      <div class="text-sm font-medium leading-snug mt-0.5">${esc(p.nama)}</div>
       <div class="font-num text-sm mt-1.5">${rupiah(p.harga)}</div>
       <div class="text-[11px] font-num ${p.stok<=5?'text-danger':'text-ink/40'}">Stok: ${p.stok}</div>
     </button>`).join('') || '<p class="text-sm text-ink/40 col-span-3">Produk tidak ditemukan.</p>';
@@ -616,10 +720,10 @@ function renderProduk(){
         <button onclick="formProduk()" class="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg">+ Tambah Produk</button>
       </div>
     </div>
-    <p class="text-xs text-ink/40 mb-4">Kolom Excel: <span class="font-num">nama, kategori, harga, stok, barcode</span>. Produk dengan barcode/nama yang sudah ada akan diperbarui, sisanya ditambahkan baru.</p>
+    <p class="text-xs text-ink/40 mb-4">Kolom Excel: <span class="font-num">nama, kategori, harga, stok</span>. Produk dengan nama yang sudah ada akan diperbarui, sisanya ditambahkan baru.</p>
     <div class="bg-white border border-line rounded-2xl overflow-x-auto">
       <table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line">
-        <th class="p-3">Nama</th><th class="p-3">Kategori</th><th class="p-3">Harga</th><th class="p-3">Stok</th><th class="p-3">Barcode</th><th class="p-3"></th>
+        <th class="p-3">Nama</th><th class="p-3">Kategori</th><th class="p-3">Harga</th><th class="p-3">Stok</th><th class="p-3"></th>
       </tr></thead><tbody id="produk-tbody"></tbody></table>
     </div>`;
   renderProdukTable();
@@ -631,43 +735,46 @@ function renderProdukTable(){
     <tr class="border-b border-line last:border-0">
       <td class="p-3 font-medium">${esc(p.nama)}</td><td class="p-3">${esc(p.kategori||'-')}</td>
       <td class="p-3 font-num">${rupiah(p.harga)}</td><td class="p-3 font-num ${p.stok<=5?'text-danger':''}">${p.stok}</td>
-      <td class="p-3 font-num text-ink/50">${esc(p.barcode||'-')}</td>
       <td class="p-3 text-right whitespace-nowrap"><button onclick="formProduk('${p.id}')" class="text-primary text-xs mr-3">Edit</button><button onclick="hapusProduk('${p.id}')" class="text-danger text-xs">Hapus</button></td>
-    </tr>`).join('') || `<tr><td colspan="6" class="p-6 text-center text-ink/40">Belum ada produk.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="5" class="p-6 text-center text-ink/40">Belum ada produk.</td></tr>`;
 }
 function formProduk(id){
-  const p = id? db.produk.find(x=>x.id===id) : {nama:'',kategori:'',harga:'',stok:'',barcode:''};
+  const p = id? db.produk.find(x=>x.id===id) : {nama:'',kategori:'',harga:'',stok:''};
+  const opsiKategori = db.kategori.map(k=>`<option value="${esc(k)}" ${p.kategori===k?'selected':''}>${esc(k)}</option>`).join('');
   openModal(`
     <h3 class="font-display font-semibold text-lg mb-4">${id?'Edit':'Tambah'} Produk</h3>
     <div class="space-y-3">
       <div><label class="text-xs text-ink/60">Nama</label><input id="f-nama" value="${esc(p.nama)}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"></div>
-      <div><label class="text-xs text-ink/60">Kategori</label><input id="f-kategori" value="${esc(p.kategori)}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"></div>
+      <div><label class="text-xs text-ink/60">Kategori</label>
+        <select id="f-kategori" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+          <option value="">Tanpa kategori</option>${opsiKategori}
+        </select>
+        ${db.kategori.length===0?'<p class="text-xs text-amber-dark mt-1">Belum ada kategori — buat dulu di menu Kategori.</p>':''}
+      </div>
       <div class="grid grid-cols-2 gap-3">
         <div><label class="text-xs text-ink/60">Harga</label><input id="f-harga" type="number" value="${p.harga}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"></div>
         <div><label class="text-xs text-ink/60">Stok</label><input id="f-stok" type="number" value="${p.stok}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"></div>
       </div>
-      <div><label class="text-xs text-ink/60">Barcode (opsional)</label><input id="f-barcode" value="${esc(p.barcode)}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"></div>
     </div>
     <div class="flex gap-2 mt-5"><button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Batal</button>
     <button onclick="simpanProduk('${id||''}')" class="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium">Simpan</button></div>`);
 }
 function simpanProduk(id){
   const nama = document.getElementById('f-nama').value.trim();
-  const kategori = document.getElementById('f-kategori').value.trim();
+  const kategori = document.getElementById('f-kategori').value;
   const harga = parseFloat(document.getElementById('f-harga').value)||0;
   const stok = parseInt(document.getElementById('f-stok').value)||0;
-  const barcode = document.getElementById('f-barcode').value.trim();
   if(!nama){ alert('Nama produk wajib diisi.'); return; }
-  if(id){ const p=db.produk.find(x=>x.id===id); Object.assign(p,{nama,kategori,harga,stok,barcode}); }
-  else{ db.produk.push({id:uid(),nama,kategori,harga,stok,barcode}); }
+  if(id){ const p=db.produk.find(x=>x.id===id); Object.assign(p,{nama,kategori,harga,stok}); }
+  else{ db.produk.push({id:uid(),nama,kategori,harga,stok}); }
   scheduleSave(); closeModal(); renderProdukTable();
 }
 function hapusProduk(id){ if(confirm('Hapus produk ini?')){ db.produk = db.produk.filter(x=>x.id!==id); scheduleSave(); renderProdukTable(); } }
 
 function downloadTemplateExcel(){
   const ws = XLSX.utils.json_to_sheet([
-    {nama:'Contoh Produk A', kategori:'Minuman', harga:5000, stok:20, barcode:'8991234560001'},
-    {nama:'Contoh Produk B', kategori:'Makanan', harga:12000, stok:10, barcode:''}
+    {nama:'Contoh Produk A', kategori:'Minuman', harga:5000, stok:20},
+    {nama:'Contoh Produk B', kategori:'Makanan', harga:12000, stok:10}
   ]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Produk');
@@ -690,12 +797,10 @@ function handleExcelUpload(evt){
         const kategori = String(r.kategori||r.Kategori||'').trim();
         const harga = parseFloat(r.harga||r.Harga||0)||0;
         const stok = parseInt(r.stok||r.Stok||0)||0;
-        const barcode = String(r.barcode||r.Barcode||'').trim();
-        let existing = null;
-        if(barcode) existing = db.produk.find(p=>p.barcode && p.barcode===barcode);
-        if(!existing) existing = db.produk.find(p=>p.nama.toLowerCase()===nama.toLowerCase());
-        if(existing){ Object.assign(existing,{nama,kategori,harga,stok,barcode}); diperbarui++; }
-        else{ db.produk.push({id:uid(),nama,kategori,harga,stok,barcode}); ditambah++; }
+        if(kategori && !db.kategori.includes(kategori)) db.kategori.push(kategori);
+        const existing = db.produk.find(p=>p.nama.toLowerCase()===nama.toLowerCase());
+        if(existing){ Object.assign(existing,{nama,kategori,harga,stok}); diperbarui++; }
+        else{ db.produk.push({id:uid(),nama,kategori,harga,stok}); ditambah++; }
       });
       scheduleSave();
       renderProdukTable();
@@ -706,6 +811,60 @@ function handleExcelUpload(evt){
     evt.target.value = '';
   };
   reader.readAsArrayBuffer(file);
+}
+
+/* ============ KATEGORI ============ */
+function renderKategori(){
+  document.getElementById('main-content').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <p class="text-sm text-ink/50">Kategori dipakai untuk mengelompokkan produk &amp; memfilter di menu Kasir.</p>
+      <button onclick="formKategori()" class="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg">+ Tambah Kategori</button>
+    </div>
+    <div id="kategori-list" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3"></div>`;
+  renderKategoriList();
+}
+function renderKategoriList(){
+  document.getElementById('kategori-list').innerHTML = db.kategori.map(k=>{
+    const jumlah = db.produk.filter(p=>p.kategori===k).length;
+    return `<div class="bg-white border border-line rounded-xl p-4">
+      <div class="font-medium text-sm">${esc(k)}</div>
+      <div class="text-xs text-ink/40 mt-1">${jumlah} produk</div>
+      <div class="flex gap-3 mt-2">
+        <button onclick="formKategori('${esc(k).replace(/'/g,"\\'")}')" class="text-primary text-xs">Edit</button>
+        <button onclick="hapusKategori('${esc(k).replace(/'/g,"\\'")}')" class="text-danger text-xs">Hapus</button>
+      </div>
+    </div>`;
+  }).join('') || `<p class="text-sm text-ink/40 col-span-full">Belum ada kategori.</p>`;
+}
+function formKategori(namaLama){
+  openModal(`
+    <h3 class="font-display font-semibold text-lg mb-4">${namaLama?'Edit':'Tambah'} Kategori</h3>
+    <label class="text-xs text-ink/60">Nama Kategori</label>
+    <input id="f-kategori-nama" value="${namaLama?esc(namaLama):''}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+    <div class="flex gap-2 mt-5"><button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Batal</button>
+    <button onclick="simpanKategori(${namaLama?`'${esc(namaLama).replace(/'/g,"\\'")}'`:'null'})" class="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium">Simpan</button></div>`);
+}
+function simpanKategori(namaLama){
+  const nama = document.getElementById('f-kategori-nama').value.trim();
+  if(!nama){ alert('Nama kategori wajib diisi.'); return; }
+  if(db.kategori.some(k=>k.toLowerCase()===nama.toLowerCase() && k!==namaLama)){ alert('Kategori sudah ada.'); return; }
+  if(namaLama){
+    const idx = db.kategori.indexOf(namaLama);
+    if(idx>-1) db.kategori[idx] = nama;
+    db.produk.forEach(p=>{ if(p.kategori===namaLama) p.kategori = nama; });
+  } else {
+    db.kategori.push(nama);
+  }
+  scheduleSave(); closeModal(); renderKategoriList();
+}
+function hapusKategori(nama){
+  const jumlah = db.produk.filter(p=>p.kategori===nama).length;
+  const pesan = jumlah>0 ? `Kategori "${nama}" dipakai oleh ${jumlah} produk. Produk tersebut akan menjadi tanpa kategori. Lanjutkan hapus?` : `Hapus kategori "${nama}"?`;
+  if(confirm(pesan)){
+    db.kategori = db.kategori.filter(k=>k!==nama);
+    db.produk.forEach(p=>{ if(p.kategori===nama) p.kategori=''; });
+    scheduleSave(); renderKategoriList();
+  }
 }
 
 /* ============ MEMBER ============ */
@@ -926,7 +1085,9 @@ function hapusUser(id){
 }
 
 /* ============ INIT ============ */
-window.addEventListener('DOMContentLoaded', ()=>{});
+window.addEventListener('DOMContentLoaded', ()=>{
+  initGoogle();
+});
 </script>
 </body>
 </html>

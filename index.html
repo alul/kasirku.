@@ -48,25 +48,28 @@
     <div class="mb-8 text-center">
       <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary text-white font-display font-bold text-2xl mb-3">K</div>
       <h1 class="font-display text-2xl font-bold">Kasirku</h1>
-      <p class="text-sm text-ink/60 mt-1">Aplikasi Kasirku Memberi Kemudahan</p>
+      <p class="text-sm text-ink/60 mt-1">Aplikasi kasir dengan database tersimpan di Google Drive-mu sendiri</p>
     </div>
     <div class="bg-white border border-line rounded-2xl p-6">
-      <h2 class="font-display font-semibold mb-2">Menghubungkan DataBase...</h2>
-      <p class="text-sm text-ink/60 mb-4">Kasirku sedang otomatis meminta izin akses. Jika jendela login tidak muncul (biasanya karena diblokir browser), klik tombol di bawah ini.</p>
+      <h2 class="font-display font-semibold mb-2">Menghubungkan Google Drive...</h2>
+      <p class="text-sm text-ink/60 mb-4">Kasirku sedang otomatis meminta izin akses ke Google Drive-mu. Jika jendela login tidak muncul (biasanya karena diblokir browser), klik tombol di bawah ini.</p>
       <button onclick="initGoogle()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Hubungkan Google Drive</button>
       <p id="setup-error" class="text-danger text-sm mt-3 hidden"></p>
     </div>
-    
+    <details class="mt-5 bg-white border border-line rounded-2xl p-5 text-sm">
+      <summary class="font-display font-semibold cursor-pointer">Kenapa perlu izin Google Drive?</summary>
+      <p class="mt-3 text-ink/70">Kasirku memakai Google Drive-mu sebagai database, bukan server pihak ketiga. Setelah klik "Hubungkan Google Drive", akan muncul jendela login Google — pilih akunmu, lalu izinkan akses. Karena aplikasi masih tahap testing, mungkin muncul peringatan "Google belum memverifikasi aplikasi ini" — klik <b>Advanced/Lanjutan → Buka Kasirku (unsafe)</b> untuk melanjutkan. Pastikan email akun Google-mu sudah didaftarkan sebagai Test user di Google Cloud Console.</p>
+    </details>
   </div>
 </div>
 
-<!-- APP LOGIN SCREEN (after Database connected) -->
+<!-- APP LOGIN SCREEN (after Drive connected) -->
 <div id="login-screen" class="min-h-screen hidden items-center justify-center p-6">
   <div class="w-full max-w-sm">
     <div class="mb-8 text-center">
       <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary text-white font-display font-bold text-2xl mb-3">K</div>
       <h1 class="font-display text-2xl font-bold">Masuk ke Kasirku</h1>
-      <p id="drive-status" class="text-sm text-primary mt-1">DataBase tersambung</p>
+      <p id="drive-status" class="text-sm text-primary mt-1">Google Drive tersambung</p>
     </div>
     <div class="bg-white border border-line rounded-2xl p-6">
       <label class="text-xs font-medium text-ink/70">Username</label>
@@ -75,6 +78,7 @@
       <input id="login-password" type="password" class="w-full mt-1 mb-4 px-3 py-2.5 border border-line rounded-lg text-sm">
       <button onclick="doLogin()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Masuk</button>
       <p id="login-error" class="text-danger text-sm mt-3 hidden"></p>
+      <p class="text-xs text-ink/40 mt-4">Akun bawaan pertama kali: <span class="font-num">admin / admin123</span> — segera ganti di menu User.</p>
     </div>
   </div>
 </div>
@@ -145,8 +149,11 @@ const MENUS = [
   {id:'kasir', label:'Kasir', icon:'cart', roles:['admin','kasir']},
   {id:'produk', label:'Produk', icon:'box', roles:['admin','kasir']},
   {id:'kategori', label:'Kategori', icon:'layers', roles:['admin','kasir']},
+  {id:'stokdasar', label:'Stok Dasar', icon:'archive', roles:['admin','kasir']},
+  {id:'penambahanstok', label:'Tambah Stok', icon:'plus', roles:['admin','kasir']},
   {id:'member', label:'Member', icon:'users', roles:['admin','kasir']},
   {id:'diskon', label:'Diskon', icon:'tag', roles:['admin']},
+  {id:'hpp', label:'HPP', icon:'calc', roles:['admin']},
   {id:'laporan', label:'Laporan', icon:'chart', roles:['admin','kasir']},
   {id:'user', label:'User', icon:'user', roles:['admin']},
 ];
@@ -155,6 +162,9 @@ const ICONS = {
   cart:'<path d="M3 4h2l2.4 11h11.2L21 8H6"/><circle cx="9" cy="20" r="1.4"/><circle cx="18" cy="20" r="1.4"/>',
   box:'<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
   layers:'<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+  archive:'<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8"/><path d="M10 13h4"/>',
+  plus:'<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+  calc:'<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h8M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>',
   users:'<circle cx="9" cy="8" r="3"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><circle cx="17" cy="9" r="2.5"/><path d="M16 14c2.8 0 5.5 1.8 6 4.5"/>',
   tag:'<path d="M20 12l-8 8-9-9V3h8l9 9z"/><circle cx="7.5" cy="7.5" r="1.3"/>',
   chart:'<path d="M4 20V10M11 20V4M18 20v-7"/>',
@@ -170,13 +180,38 @@ let folderId = null;
 let fileId = null;
 let saveTimer = null;
 
-let db = { produk:[], kategori:[], member:[], voucher:[], user:[], transaksi:[] };
+let db = { produk:[], kategori:[], stokDasar:[], riwayatStok:[], member:[], voucher:[], user:[], transaksi:[] };
 let session = { user:null, page:'dashboard', cart:[], member:null, voucher:null, kategoriFilter:null };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function rupiah(n){ return 'Rp' + Math.round(n||0).toLocaleString('id-ID'); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
 function todayStr(){ return new Date().toISOString().slice(0,10); }
+
+/* ============ STOK EFEKTIF (mandiri vs terhubung ke stok dasar) ============ */
+function stokEfektif(p){
+  if(p.mode==='terhubung' && p.stokDasarId){
+    const sd = db.stokDasar.find(x=>x.id===p.stokDasarId);
+    if(!sd) return 0;
+    return Math.floor(sd.stok / (p.isi||1));
+  }
+  return p.stok||0;
+}
+function kurangiStokProduk(p, qty){
+  if(p.mode==='terhubung' && p.stokDasarId){
+    const sd = db.stokDasar.find(x=>x.id===p.stokDasarId);
+    if(sd) sd.stok -= (p.isi||1)*qty;
+  } else {
+    p.stok = (p.stok||0) - qty;
+  }
+}
+function hppProduk(p){
+  if(p.mode==='terhubung' && p.stokDasarId){
+    const sd = db.stokDasar.find(x=>x.id===p.stokDasarId);
+    return sd ? (sd.hpp||0)*(p.isi||1) : 0;
+  }
+  return p.hpp||0;
+}
 
 /* ============ SETUP / OAUTH ============ */
 
@@ -238,7 +273,7 @@ async function ensureDriveFile(){
   if(data.files && data.files.length){ fileId = data.files[0].id; }
   else{
     const defaultDb = {
-      produk:[], kategori:['Minuman','Makanan','Snack','Lainnya'], member:[], voucher:[],
+      produk:[], kategori:['Minuman','Makanan','Snack','Lainnya'], stokDasar:[], riwayatStok:[], member:[], voucher:[],
       user:[{id:uid(), username:'admin', password:'admin123', nama:'Administrator', role:'admin'}],
       transaksi:[]
     };
@@ -256,7 +291,8 @@ async function loadFromDrive(){
   const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
   const text = await res.text();
   try{ db = JSON.parse(text); }catch(e){ db = {produk:[],member:[],voucher:[],user:[],transaksi:[]}; }
-  db.produk = db.produk||[]; db.kategori = db.kategori||[]; db.member = db.member||[]; db.voucher = db.voucher||[];
+  db.produk = db.produk||[]; db.kategori = db.kategori||[]; db.stokDasar = db.stokDasar||[]; db.riwayatStok = db.riwayatStok||[];
+  db.member = db.member||[]; db.voucher = db.voucher||[];
   db.user = db.user||[]; db.transaksi = db.transaksi||[];
   localStorage.setItem('kasirku_cache', JSON.stringify(db));
 }
@@ -341,7 +377,7 @@ function goPage(id){
     el.classList.toggle('nav-active', el.dataset.nav===id);
   });
   document.getElementById('page-title').textContent = (menu?menu.label:'Dashboard');
-  const renderers = {dashboard:renderDashboard, kasir:renderKasir, produk:renderProduk, kategori:renderKategori, member:renderMember, diskon:renderDiskon, laporan:renderLaporan, user:renderUser};
+  const renderers = {dashboard:renderDashboard, kasir:renderKasir, produk:renderProduk, kategori:renderKategori, stokdasar:renderStokDasar, penambahanstok:renderPenambahanStok, member:renderMember, diskon:renderDiskon, hpp:renderHpp, laporan:renderLaporan, user:renderUser};
   (renderers[id]||renderKasir)();
 }
 
@@ -541,20 +577,24 @@ function renderProdukGrid(){
   const q = (document.getElementById('kasir-search').value||'').toLowerCase();
   let list = db.produk.filter(p=> p.nama.toLowerCase().includes(q));
   if(session.kategoriFilter) list = list.filter(p=>p.kategori===session.kategoriFilter);
-  document.getElementById('produk-grid').innerHTML = list.map(p=>`
-    <button onclick="tambahKeranjang('${p.id}')" ${p.stok<=0?'disabled':''} class="text-left bg-white border border-line rounded-xl p-3 hover:border-primary transition disabled:opacity-40">
+  document.getElementById('produk-grid').innerHTML = list.map(p=>{
+    const stok = stokEfektif(p);
+    return `
+    <button onclick="tambahKeranjang('${p.id}')" ${stok<=0?'disabled':''} class="text-left bg-white border border-line rounded-xl p-3 hover:border-primary transition disabled:opacity-40">
       <div class="text-[10px] font-semibold uppercase tracking-wide text-primary">${esc(p.kategori||'-')}</div>
       <div class="text-sm font-medium leading-snug mt-0.5">${esc(p.nama)}</div>
       <div class="font-num text-sm mt-1.5">${rupiah(p.harga)}</div>
-      <div class="text-[11px] font-num ${p.stok<=5?'text-danger':'text-ink/40'}">Stok: ${p.stok}</div>
-    </button>`).join('') || '<p class="text-sm text-ink/40 col-span-3">Produk tidak ditemukan.</p>';
+      <div class="text-[11px] font-num ${stok<=5?'text-danger':'text-ink/40'}">Stok: ${stok}</div>
+    </button>`;
+  }).join('') || '<p class="text-sm text-ink/40 col-span-3">Produk tidak ditemukan.</p>';
 }
 function tambahKeranjang(pid){
   const p = db.produk.find(x=>x.id===pid);
-  if(!p || p.stok<=0) return;
+  const stok = p ? stokEfektif(p) : 0;
+  if(!p || stok<=0) return;
   const existing = session.cart.find(c=>c.produkId===pid);
   if(existing){
-    if(existing.qty>=p.stok) return;
+    if(existing.qty>=stok) return;
     existing.qty++;
   } else {
     session.cart.push({produkId:p.id, nama:p.nama, harga:p.harga, qty:1});
@@ -566,8 +606,9 @@ function ubahQty(pid,delta){
   const p = db.produk.find(x=>x.id===pid);
   if(!item) return;
   item.qty += delta;
+  const stok = p ? stokEfektif(p) : 999999;
   if(item.qty<=0){ session.cart = session.cart.filter(c=>c.produkId!==pid); }
-  else if(p && item.qty>p.stok){ item.qty = p.stok; }
+  else if(item.qty>stok){ item.qty = stok; }
   renderCart();
 }
 function renderCart(){
@@ -635,9 +676,9 @@ function bayarTransaksi(){
   if(bayar<total){ alert('Jumlah bayar kurang dari total.'); return; }
   for(const c of session.cart){
     const p = db.produk.find(x=>x.id===c.produkId);
-    if(!p || p.stok<c.qty){ alert('Stok tidak cukup untuk '+c.nama); return; }
+    if(!p || stokEfektif(p)<c.qty){ alert('Stok tidak cukup untuk '+c.nama); return; }
   }
-  session.cart.forEach(c=>{ const p = db.produk.find(x=>x.id===c.produkId); p.stok -= c.qty; });
+  session.cart.forEach(c=>{ const p = db.produk.find(x=>x.id===c.produkId); kurangiStokProduk(p, c.qty); });
   if(session.member){ session.member.poin = (session.member.poin||0) + Math.floor(total/10000); }
   const trx = {
     id: uid(), tanggal: new Date().toISOString(),
@@ -727,16 +768,22 @@ function renderProduk(){
 function renderProdukTable(){
   const q = (document.getElementById('produk-search-tbl').value||'').toLowerCase();
   const list = db.produk.filter(p=>p.nama.toLowerCase().includes(q));
-  document.getElementById('produk-tbody').innerHTML = list.map(p=>`
+  document.getElementById('produk-tbody').innerHTML = list.map(p=>{
+    const stok = stokEfektif(p);
+    const sd = p.mode==='terhubung' ? db.stokDasar.find(x=>x.id===p.stokDasarId) : null;
+    return `
     <tr class="border-b border-line last:border-0">
-      <td class="p-3 font-medium">${esc(p.nama)}</td><td class="p-3">${esc(p.kategori||'-')}</td>
-      <td class="p-3 font-num">${rupiah(p.harga)}</td><td class="p-3 font-num ${p.stok<=5?'text-danger':''}">${p.stok}</td>
+      <td class="p-3 font-medium">${esc(p.nama)}${sd?`<div class="text-[11px] text-ink/40 font-normal">Terhubung: ${esc(sd.nama)} · isi ${p.isi||1}</div>`:''}</td>
+      <td class="p-3">${esc(p.kategori||'-')}</td>
+      <td class="p-3 font-num">${rupiah(p.harga)}</td><td class="p-3 font-num ${stok<=5?'text-danger':''}">${stok}</td>
       <td class="p-3 text-right whitespace-nowrap"><button onclick="formProduk('${p.id}')" class="text-primary text-xs mr-3">Edit</button><button onclick="hapusProduk('${p.id}')" class="text-danger text-xs">Hapus</button></td>
-    </tr>`).join('') || `<tr><td colspan="5" class="p-6 text-center text-ink/40">Belum ada produk.</td></tr>`;
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" class="p-6 text-center text-ink/40">Belum ada produk.</td></tr>`;
 }
 function formProduk(id){
-  const p = id? db.produk.find(x=>x.id===id) : {nama:'',kategori:'',harga:'',stok:''};
+  const p = id? db.produk.find(x=>x.id===id) : {nama:'',kategori:'',harga:'',stok:'',mode:'mandiri',stokDasarId:'',isi:1};
   const opsiKategori = db.kategori.map(k=>`<option value="${esc(k)}" ${p.kategori===k?'selected':''}>${esc(k)}</option>`).join('');
+  const opsiStokDasar = db.stokDasar.map(sd=>`<option value="${sd.id}" ${p.stokDasarId===sd.id?'selected':''}>${esc(sd.nama)} (stok: ${sd.stok})</option>`).join('');
   openModal(`
     <h3 class="font-display font-semibold text-lg mb-4">${id?'Edit':'Tambah'} Produk</h3>
     <div class="space-y-3">
@@ -745,24 +792,60 @@ function formProduk(id){
         <select id="f-kategori" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
           <option value="">Tanpa kategori</option>${opsiKategori}
         </select>
-        ${db.kategori.length===0?'<p class="text-xs text-amber-dark mt-1">Belum ada kategori — buat dulu di menu Kategori.</p>':''}
       </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div><label class="text-xs text-ink/60">Harga</label><input id="f-harga" type="number" value="${p.harga}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"></div>
-        <div><label class="text-xs text-ink/60">Stok</label><input id="f-stok" type="number" value="${p.stok}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"></div>
+      <div><label class="text-xs text-ink/60">Harga Jual</label><input id="f-harga" type="number" value="${p.harga}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"></div>
+      <div>
+        <label class="text-xs text-ink/60">Jenis Stok</label>
+        <div class="flex gap-2 mt-1">
+          <button type="button" onclick="pilihModeProduk('mandiri')" id="btn-mode-mandiri" class="flex-1 py-2 rounded-lg text-xs font-medium border ${p.mode!=='terhubung'?'bg-ink text-white border-ink':'bg-white text-ink/60 border-line'}">Stok Sendiri</button>
+          <button type="button" onclick="pilihModeProduk('terhubung')" id="btn-mode-terhubung" class="flex-1 py-2 rounded-lg text-xs font-medium border ${p.mode==='terhubung'?'bg-ink text-white border-ink':'bg-white text-ink/60 border-line'}">Dari Stok Dasar</button>
+        </div>
+        <p class="text-[11px] text-ink/40 mt-1">Pakai "Dari Stok Dasar" kalau produk ini adalah kemasan/paket dari item stok yang sama (mis. isi 3, isi 4, per-pcs).</p>
+      </div>
+      <div id="field-mandiri" class="${p.mode==='terhubung'?'hidden':''}">
+        <label class="text-xs text-ink/60">Stok</label>
+        <input id="f-stok" type="number" value="${p.stok||0}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+      </div>
+      <div id="field-terhubung" class="${p.mode==='terhubung'?'':'hidden'} space-y-3">
+        <div><label class="text-xs text-ink/60">Stok Dasar</label>
+          <select id="f-stokdasar" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+            <option value="">Pilih item stok dasar</option>${opsiStokDasar}
+          </select>
+          ${db.stokDasar.length===0?'<p class="text-xs text-amber-dark mt-1">Belum ada Stok Dasar — buat dulu di menu Stok Dasar.</p>':''}
+        </div>
+        <div><label class="text-xs text-ink/60">Isi (jumlah stok dasar terpakai per 1 produk terjual)</label>
+          <input id="f-isi" type="number" min="1" value="${p.isi||1}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+        </div>
       </div>
     </div>
     <div class="flex gap-2 mt-5"><button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Batal</button>
     <button onclick="simpanProduk('${id||''}')" class="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium">Simpan</button></div>`);
 }
+function pilihModeProduk(mode){
+  document.getElementById('field-mandiri').classList.toggle('hidden', mode==='terhubung');
+  document.getElementById('field-terhubung').classList.toggle('hidden', mode!=='terhubung');
+  document.getElementById('btn-mode-mandiri').className = `flex-1 py-2 rounded-lg text-xs font-medium border ${mode!=='terhubung'?'bg-ink text-white border-ink':'bg-white text-ink/60 border-line'}`;
+  document.getElementById('btn-mode-terhubung').className = `flex-1 py-2 rounded-lg text-xs font-medium border ${mode==='terhubung'?'bg-ink text-white border-ink':'bg-white text-ink/60 border-line'}`;
+  document.getElementById('btn-mode-mandiri').dataset.mode = mode;
+}
 function simpanProduk(id){
   const nama = document.getElementById('f-nama').value.trim();
   const kategori = document.getElementById('f-kategori').value;
   const harga = parseFloat(document.getElementById('f-harga').value)||0;
-  const stok = parseInt(document.getElementById('f-stok').value)||0;
+  const mode = document.getElementById('field-terhubung').classList.contains('hidden') ? 'mandiri' : 'terhubung';
   if(!nama){ alert('Nama produk wajib diisi.'); return; }
-  if(id){ const p=db.produk.find(x=>x.id===id); Object.assign(p,{nama,kategori,harga,stok}); }
-  else{ db.produk.push({id:uid(),nama,kategori,harga,stok}); }
+  let data = {nama,kategori,harga,mode};
+  if(mode==='terhubung'){
+    const stokDasarId = document.getElementById('f-stokdasar').value;
+    const isi = parseInt(document.getElementById('f-isi').value)||1;
+    if(!stokDasarId){ alert('Pilih Stok Dasar untuk produk ini.'); return; }
+    data.stokDasarId = stokDasarId; data.isi = isi; data.stok = 0;
+  } else {
+    const stok = parseInt(document.getElementById('f-stok').value)||0;
+    data.stok = stok; data.stokDasarId=''; data.isi=1;
+  }
+  if(id){ const p=db.produk.find(x=>x.id===id); Object.assign(p,data); }
+  else{ db.produk.push(Object.assign({id:uid()},data)); }
   scheduleSave(); closeModal(); renderProdukTable();
 }
 function hapusProduk(id){ if(confirm('Hapus produk ini?')){ db.produk = db.produk.filter(x=>x.id!==id); scheduleSave(); renderProdukTable(); } }
@@ -861,6 +944,197 @@ function hapusKategori(nama){
     db.produk.forEach(p=>{ if(p.kategori===nama) p.kategori=''; });
     scheduleSave(); renderKategoriList();
   }
+}
+
+/* ============ STOK DASAR ============ */
+function renderStokDasar(){
+  document.getElementById('main-content').innerHTML = `
+    <div class="flex justify-between items-center mb-4">
+      <p class="text-sm text-ink/50 max-w-md">Item stok bersama yang dipakai beberapa produk kemasan berbeda (mis. isi 3, isi 4, per-pcs).</p>
+      <button onclick="formStokDasar()" class="bg-primary text-white text-sm font-medium px-4 py-2 rounded-lg">+ Tambah Item</button>
+    </div>
+    <div class="bg-white border border-line rounded-2xl overflow-x-auto">
+      <table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line">
+        <th class="p-3">Nama</th><th class="p-3">Satuan</th><th class="p-3">Stok Saat Ini</th><th class="p-3">Dipakai Oleh</th><th class="p-3"></th>
+      </tr></thead><tbody id="stokdasar-tbody"></tbody></table>
+    </div>`;
+  renderStokDasarTable();
+}
+function renderStokDasarTable(){
+  document.getElementById('stokdasar-tbody').innerHTML = db.stokDasar.map(sd=>{
+    const dipakai = db.produk.filter(p=>p.mode==='terhubung' && p.stokDasarId===sd.id);
+    return `<tr class="border-b border-line last:border-0">
+      <td class="p-3 font-medium">${esc(sd.nama)}</td>
+      <td class="p-3">${esc(sd.satuan||'pcs')}</td>
+      <td class="p-3 font-num ${sd.stok<=10?'text-danger':''}">${sd.stok}</td>
+      <td class="p-3 text-xs text-ink/50">${dipakai.length? dipakai.map(p=>esc(p.nama)).join(', ') : '-'}</td>
+      <td class="p-3 text-right whitespace-nowrap"><button onclick="formStokDasar('${sd.id}')" class="text-primary text-xs mr-3">Edit</button><button onclick="hapusStokDasar('${sd.id}')" class="text-danger text-xs">Hapus</button></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5" class="p-6 text-center text-ink/40">Belum ada item stok dasar.</td></tr>`;
+}
+function formStokDasar(id){
+  const sd = id? db.stokDasar.find(x=>x.id===id) : {nama:'',satuan:'pcs',stok:0};
+  openModal(`
+    <h3 class="font-display font-semibold text-lg mb-4">${id?'Edit':'Tambah'} Item Stok Dasar</h3>
+    <div class="space-y-3">
+      <div><label class="text-xs text-ink/60">Nama Item</label><input id="f-sd-nama" value="${esc(sd.nama)}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm" placeholder="Misal: Udang Keju"></div>
+      <div class="grid grid-cols-2 gap-3">
+        <div><label class="text-xs text-ink/60">Satuan</label><input id="f-sd-satuan" value="${esc(sd.satuan||'pcs')}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"></div>
+        <div><label class="text-xs text-ink/60">Stok Awal</label><input id="f-sd-stok" type="number" value="${sd.stok||0}" ${id?'':''} class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm"></div>
+      </div>
+      ${id?'<p class="text-[11px] text-ink/40">Untuk menambah stok selanjutnya, gunakan menu Tambah Stok agar tercatat riwayatnya. Kolom di atas hanya untuk koreksi manual.</p>':''}
+    </div>
+    <div class="flex gap-2 mt-5"><button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Batal</button>
+    <button onclick="simpanStokDasar('${id||''}')" class="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium">Simpan</button></div>`);
+}
+function simpanStokDasar(id){
+  const nama = document.getElementById('f-sd-nama').value.trim();
+  const satuan = document.getElementById('f-sd-satuan').value.trim()||'pcs';
+  const stok = parseInt(document.getElementById('f-sd-stok').value)||0;
+  if(!nama){ alert('Nama item wajib diisi.'); return; }
+  if(id){ const sd=db.stokDasar.find(x=>x.id===id); Object.assign(sd,{nama,satuan,stok}); }
+  else{ db.stokDasar.push({id:uid(),nama,satuan,stok,hpp:0}); }
+  scheduleSave(); closeModal(); renderStokDasarTable();
+}
+function hapusStokDasar(id){
+  const dipakai = db.produk.some(p=>p.mode==='terhubung' && p.stokDasarId===id);
+  if(dipakai){ alert('Item ini masih dipakai oleh produk. Ubah produk tersebut ke mode "Stok Sendiri" atau item lain dulu sebelum menghapus.'); return; }
+  if(confirm('Hapus item stok dasar ini?')){ db.stokDasar = db.stokDasar.filter(x=>x.id!==id); scheduleSave(); renderStokDasarTable(); }
+}
+
+/* ============ TAMBAH STOK (dengan riwayat) ============ */
+function renderPenambahanStok(){
+  const opsi = db.stokDasar.map(sd=>`<option value="${sd.id}">${esc(sd.nama)} (stok saat ini: ${sd.stok})</option>`).join('');
+  document.getElementById('main-content').innerHTML = `
+    <div class="bg-white border border-line rounded-2xl p-5 mb-5 max-w-lg">
+      <h3 class="font-display font-semibold mb-3">Tambah Stok</h3>
+      ${db.stokDasar.length===0? `<p class="text-sm text-ink/50">Belum ada item Stok Dasar. Buat dulu di menu <b>Stok Dasar</b>.</p>` : `
+      <div class="space-y-3">
+        <div><label class="text-xs text-ink/60">Item</label>
+          <select id="ts-item" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">${opsi}</select>
+        </div>
+        <div><label class="text-xs text-ink/60">Jumlah Ditambah</label>
+          <input id="ts-jumlah" type="number" min="1" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+        </div>
+        <div><label class="text-xs text-ink/60">Catatan (opsional)</label>
+          <input id="ts-catatan" placeholder="Misal: restock dari supplier" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+        </div>
+        <button onclick="simpanPenambahanStok()" class="w-full bg-primary text-white font-medium py-2.5 rounded-lg text-sm">Simpan Penambahan Stok</button>
+      </div>`}
+    </div>
+    <h3 class="font-display font-semibold mb-3">Riwayat Penambahan Stok</h3>
+    <div class="bg-white border border-line rounded-2xl overflow-x-auto">
+      <table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line">
+        <th class="p-3">Tanggal</th><th class="p-3">Item</th><th class="p-3">Jumlah</th><th class="p-3">Oleh</th><th class="p-3">Catatan</th>
+      </tr></thead><tbody id="riwayat-stok-tbody"></tbody></table>
+    </div>`;
+  renderRiwayatStok();
+}
+function renderRiwayatStok(){
+  const list = [...db.riwayatStok].sort((a,b)=>b.tanggal.localeCompare(a.tanggal));
+  document.getElementById('riwayat-stok-tbody').innerHTML = list.map(r=>`
+    <tr class="border-b border-line last:border-0">
+      <td class="p-3 font-num text-xs">${r.tanggal.slice(0,10)} ${r.tanggal.slice(11,16)}</td>
+      <td class="p-3">${esc(r.itemNama)}</td>
+      <td class="p-3 font-num text-primary">+${r.jumlah}</td>
+      <td class="p-3">${esc(r.userNama)}</td>
+      <td class="p-3 text-xs text-ink/50">${esc(r.catatan||'-')}</td>
+    </tr>`).join('') || `<tr><td colspan="5" class="p-6 text-center text-ink/40">Belum ada riwayat penambahan stok.</td></tr>`;
+}
+function simpanPenambahanStok(){
+  const itemId = document.getElementById('ts-item').value;
+  const jumlah = parseInt(document.getElementById('ts-jumlah').value)||0;
+  const catatan = document.getElementById('ts-catatan').value.trim();
+  const sd = db.stokDasar.find(x=>x.id===itemId);
+  if(!sd){ alert('Pilih item terlebih dahulu.'); return; }
+  if(jumlah<=0){ alert('Jumlah harus lebih dari 0.'); return; }
+  sd.stok += jumlah;
+  db.riwayatStok.push({id:uid(), tanggal:new Date().toISOString(), itemId:sd.id, itemNama:sd.nama, jumlah, userId:session.user.id, userNama:session.user.nama, catatan});
+  scheduleSave();
+  renderPenambahanStok();
+}
+
+/* ============ HPP (admin only) ============ */
+function renderHpp(){
+  if(session.user.role!=='admin'){
+    document.getElementById('main-content').innerHTML = `<div class="bg-white border border-line rounded-2xl p-8 text-center text-ink/50">Menu ini hanya dapat diakses oleh admin.</div>`;
+    return;
+  }
+  const nilaiStokDasar = db.stokDasar.reduce((s,sd)=>s+sd.stok*(sd.hpp||0),0);
+  const produkMandiri = db.produk.filter(p=>p.mode!=='terhubung');
+  const nilaiProdukMandiri = produkMandiri.reduce((s,p)=>s+(p.stok||0)*(p.hpp||0),0);
+  document.getElementById('main-content').innerHTML = `
+    <div class="grid grid-cols-2 md:grid-cols-2 gap-3 mb-6">
+      ${statCard('Nilai Persediaan (Stok Dasar)', rupiah(nilaiStokDasar), 'primary')}
+      ${statCard('Nilai Persediaan (Produk Sendiri)', rupiah(nilaiProdukMandiri), 'amber')}
+    </div>
+    <h3 class="font-display font-semibold mb-2">HPP Stok Dasar</h3>
+    <div class="bg-white border border-line rounded-2xl overflow-x-auto mb-6">
+      <table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line">
+        <th class="p-3">Item</th><th class="p-3">Stok</th><th class="p-3">HPP / unit</th><th class="p-3">Nilai Stok</th><th class="p-3"></th>
+      </tr></thead><tbody id="hpp-stokdasar-tbody"></tbody></table>
+    </div>
+    <h3 class="font-display font-semibold mb-2">HPP &amp; Margin Produk</h3>
+    <div class="bg-white border border-line rounded-2xl overflow-x-auto">
+      <table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line">
+        <th class="p-3">Produk</th><th class="p-3">Harga Jual</th><th class="p-3">HPP</th><th class="p-3">Margin</th><th class="p-3">Margin %</th><th class="p-3"></th>
+      </tr></thead><tbody id="hpp-produk-tbody"></tbody></table>
+    </div>`;
+  renderHppStokDasarTable();
+  renderHppProdukTable();
+}
+function renderHppStokDasarTable(){
+  document.getElementById('hpp-stokdasar-tbody').innerHTML = db.stokDasar.map(sd=>`
+    <tr class="border-b border-line last:border-0">
+      <td class="p-3 font-medium">${esc(sd.nama)}</td>
+      <td class="p-3 font-num">${sd.stok}</td>
+      <td class="p-3 font-num">${rupiah(sd.hpp||0)}</td>
+      <td class="p-3 font-num">${rupiah(sd.stok*(sd.hpp||0))}</td>
+      <td class="p-3 text-right"><button onclick="formHppStokDasar('${sd.id}')" class="text-primary text-xs">Atur HPP</button></td>
+    </tr>`).join('') || `<tr><td colspan="5" class="p-6 text-center text-ink/40">Belum ada item stok dasar.</td></tr>`;
+}
+function formHppStokDasar(id){
+  const sd = db.stokDasar.find(x=>x.id===id);
+  openModal(`
+    <h3 class="font-display font-semibold text-lg mb-4">Atur HPP — ${esc(sd.nama)}</h3>
+    <label class="text-xs text-ink/60">HPP per ${esc(sd.satuan||'unit')}</label>
+    <input id="f-hpp" type="number" value="${sd.hpp||0}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+    <div class="flex gap-2 mt-5"><button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Batal</button>
+    <button onclick="simpanHppStokDasar('${id}')" class="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium">Simpan</button></div>`);
+}
+function simpanHppStokDasar(id){
+  const sd = db.stokDasar.find(x=>x.id===id);
+  sd.hpp = parseFloat(document.getElementById('f-hpp').value)||0;
+  scheduleSave(); closeModal(); renderHpp();
+}
+function renderHppProdukTable(){
+  document.getElementById('hpp-produk-tbody').innerHTML = db.produk.map(p=>{
+    const hpp = hppProduk(p);
+    const margin = p.harga - hpp;
+    const marginPct = p.harga>0 ? (margin/p.harga*100) : 0;
+    return `<tr class="border-b border-line last:border-0">
+      <td class="p-3 font-medium">${esc(p.nama)}</td>
+      <td class="p-3 font-num">${rupiah(p.harga)}</td>
+      <td class="p-3 font-num">${rupiah(hpp)}</td>
+      <td class="p-3 font-num ${margin<0?'text-danger':''}">${rupiah(margin)}</td>
+      <td class="p-3 font-num ${marginPct<0?'text-danger':''}">${marginPct.toFixed(1)}%</td>
+      <td class="p-3 text-right">${p.mode==='terhubung'?'<span class="text-[11px] text-ink/40">otomatis</span>':`<button onclick="formHppProduk('${p.id}')" class="text-primary text-xs">Atur HPP</button>`}</td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="6" class="p-6 text-center text-ink/40">Belum ada produk.</td></tr>`;
+}
+function formHppProduk(id){
+  const p = db.produk.find(x=>x.id===id);
+  openModal(`
+    <h3 class="font-display font-semibold text-lg mb-4">Atur HPP — ${esc(p.nama)}</h3>
+    <label class="text-xs text-ink/60">HPP per unit terjual</label>
+    <input id="f-hpp-produk" type="number" value="${p.hpp||0}" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+    <div class="flex gap-2 mt-5"><button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Batal</button>
+    <button onclick="simpanHppProduk('${id}')" class="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium">Simpan</button></div>`);
+}
+function simpanHppProduk(id){
+  const p = db.produk.find(x=>x.id===id);
+  p.hpp = parseFloat(document.getElementById('f-hpp-produk').value)||0;
+  scheduleSave(); closeModal(); renderHpp();
 }
 
 /* ============ MEMBER ============ */

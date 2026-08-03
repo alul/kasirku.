@@ -37,6 +37,8 @@
     body *{visibility:hidden;}
     #receipt-print, #receipt-print *{visibility:visible;}
     #receipt-print{display:block;position:absolute;top:0;left:0;width:80mm;padding:4mm;font-family:'IBM Plex Mono',monospace;font-size:11px;}
+    #receipt-print.label-mode{width:auto;padding:0;display:flex;flex-wrap:wrap;gap:2mm;}
+    #receipt-print.label-mode .label{width:50mm;min-height:35mm;padding:3mm;border:1px dashed #999;page-break-after:always;box-sizing:border-box;font-family:'IBM Plex Mono',monospace;}
   }
 </style>
 </head>
@@ -48,14 +50,15 @@
     <div class="mb-8 text-center">
       <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary text-white font-display font-bold text-2xl mb-3">K</div>
       <h1 class="font-display text-2xl font-bold">Kasirku</h1>
-      <p class="text-sm text-ink/60 mt-1">Aplikasi kasir</p>
+      <p class="text-sm text-ink/60 mt-1">Aplikasi Kasir</p>
     </div>
     <div class="bg-white border border-line rounded-2xl p-6">
       <h2 class="font-display font-semibold mb-2">Menghubungkan DataBase...</h2>
-      <p class="text-sm text-ink/60 mb-4">Kasirku sedang otomatis meminta izin akses ke DataBase. Jika jendela login tidak muncul (biasanya karena diblokir browser), klik tombol di bawah ini.</p>
+      <p class="text-sm text-ink/60 mb-4">Kasirku sedang otomatis meminta izin akses ke Database. Jika jendela login tidak muncul (biasanya karena diblokir browser), klik tombol di bawah ini.</p>
       <button onclick="initGoogle()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Hubungkan DataBase</button>
       <p id="setup-error" class="text-danger text-sm mt-3 hidden"></p>
     </div>
+    
   </div>
 </div>
 
@@ -538,6 +541,10 @@ function renderKasir(){
         </div>
         <div id="voucher-info" class="text-xs mt-1.5"></div>
       </div>
+      <div class="mb-3">
+        <label class="text-xs font-medium text-ink/60">Catatan Pesanan (opsional)</label>
+        <input id="catatan-pesanan" placeholder="Misal: less ice, pedas level 2" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+      </div>
       <div class="receipt-dash border-t border-dashed border-line my-3"></div>
       <div id="cart-list" class="space-y-2 max-h-64 overflow-y-auto font-num text-sm"></div>
       <div class="border-t border-dashed border-line my-3"></div>
@@ -675,8 +682,10 @@ function bayarTransaksi(){
   }
   session.cart.forEach(c=>{ const p = db.produk.find(x=>x.id===c.produkId); kurangiStokProduk(p, c.qty); });
   if(session.member){ session.member.poin = (session.member.poin||0) + Math.floor(total/10000); }
+  const nomorAntrian = db.transaksi.filter(t=>t.tanggal.slice(0,10)===todayStr()).length + 1;
+  const catatan = (document.getElementById('catatan-pesanan').value||'').trim();
   const trx = {
-    id: uid(), tanggal: new Date().toISOString(),
+    id: uid(), tanggal: new Date().toISOString(), nomorAntrian, catatan,
     kasirId: session.user.id, kasirNama: session.user.nama,
     memberId: session.member?session.member.id:null, memberNama: session.member?session.member.nama:'Umum',
     items: session.cart.map(c=>({produkId:c.produkId,nama:c.nama,qty:c.qty,harga:c.harga,subtotal:c.harga*c.qty})),
@@ -688,6 +697,7 @@ function bayarTransaksi(){
   document.getElementById('member-hp').value=''; document.getElementById('member-info').innerHTML='';
   document.getElementById('voucher-kode').value=''; document.getElementById('voucher-info').innerHTML='';
   document.getElementById('bayar-input').value='';
+  document.getElementById('catatan-pesanan').value='';
   scheduleSave();
   renderProdukGrid(); renderCart();
   tampilkanStruk(trx.id);
@@ -706,6 +716,7 @@ function buildReceiptHtml(t){
     <div style="text-align:center;">
       <div style="font-weight:600;font-size:14px;">KASIRKU</div>
       <div>${t.tanggal.slice(0,10)} ${t.tanggal.slice(11,16)}</div>
+      ${t.nomorAntrian?`<div>No. Antrian: ${t.nomorAntrian}</div>`:''}
       <div>Kasir: ${esc(t.kasirNama)}</div>
       <div>Member: ${esc(t.memberNama||'Umum')}</div>
     </div>
@@ -717,8 +728,25 @@ function buildReceiptHtml(t){
     <div style="display:flex;justify-content:space-between;font-weight:600;"><span>Total</span><span>${rupiah(t.total)}</span></div>
     <div style="display:flex;justify-content:space-between;"><span>Bayar</span><span>${rupiah(t.bayar)}</span></div>
     <div style="display:flex;justify-content:space-between;"><span>Kembali</span><span>${rupiah(t.kembalian)}</span></div>
+    ${t.catatan?`<div>${garis}</div><div>Catatan: ${esc(t.catatan)}</div>`:''}
     <div>${garis}</div>
     <div style="text-align:center;">Terima kasih!</div>`;
+}
+function buildLabelHtml(t){
+  const labels = [];
+  t.items.forEach(i=>{
+    for(let n=0;n<i.qty;n++){
+      labels.push(`
+        <div class="label">
+          <div style="font-size:9px;">#${t.nomorAntrian||'-'} · ${t.tanggal.slice(11,16)}</div>
+          <div style="font-weight:700;font-size:15px;margin-top:2px;line-height:1.25;">${esc(i.nama)}</div>
+          ${i.qty>1?`<div style="font-size:10px;margin-top:2px;">Qty item ini: ${i.qty}</div>`:''}
+          ${t.catatan?`<div style="font-size:10px;margin-top:3px;border-top:1px dashed #999;padding-top:2px;">Catatan: ${esc(t.catatan)}</div>`:''}
+          <div style="font-size:9px;margin-top:3px;color:#555;">Kasir: ${esc(t.kasirNama)}</div>
+        </div>`);
+    }
+  });
+  return labels.join('');
 }
 function tampilkanStruk(id){
   const t = db.transaksi.find(x=>x.id===id);
@@ -728,13 +756,24 @@ function tampilkanStruk(id){
     <div class="font-num text-xs border border-dashed border-line rounded-xl p-4 bg-paper2">${buildReceiptHtml(t)}</div>
     <div class="flex gap-2 mt-5">
       <button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Tutup</button>
+      <button onclick="printLabel('${t.id}')" class="flex-1 py-2.5 rounded-lg bg-amber text-white text-sm font-medium">Cetak Label</button>
       <button onclick="printStruk('${t.id}')" class="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium">Cetak Struk</button>
     </div>`);
 }
 function printStruk(id){
   const t = db.transaksi.find(x=>x.id===id);
   if(!t) return;
-  document.getElementById('receipt-print').innerHTML = buildReceiptHtml(t);
+  const el = document.getElementById('receipt-print');
+  el.className = '';
+  el.innerHTML = buildReceiptHtml(t);
+  window.print();
+}
+function printLabel(id){
+  const t = db.transaksi.find(x=>x.id===id);
+  if(!t) return;
+  const el = document.getElementById('receipt-print');
+  el.className = 'label-mode';
+  el.innerHTML = buildLabelHtml(t);
   window.print();
 }
 

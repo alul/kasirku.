@@ -7,7 +7,6 @@
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
 <script>
@@ -53,9 +52,9 @@
       <p class="text-sm text-ink/60 mt-1">Aplikasi Kasir</p>
     </div>
     <div class="bg-white border border-line rounded-2xl p-6">
-      <h2 class="font-display font-semibold mb-2">Menghubungkan DataBase...</h2>
-      <p class="text-sm text-ink/60 mb-4">Kasirku sedang otomatis meminta izin akses ke Database. Jika jendela login tidak muncul (biasanya karena diblokir browser), klik tombol di bawah ini.</p>
-      <button onclick="initGoogle()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Hubungkan DataBase</button>
+      <h2 class="font-display font-semibold mb-2">Menghubungkan Database...</h2>
+      <p class="text-sm text-ink/60 mb-4">Kasirku sedang otomatis menyambung ke database. Jika gagal (misal karena koneksi internet), klik tombol di bawah untuk mencoba lagi.</p>
+      <button onclick="connectDatabase()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Coba Lagi</button>
       <p id="setup-error" class="text-danger text-sm mt-3 hidden"></p>
     </div>
     
@@ -68,7 +67,8 @@
     <div class="mb-8 text-center">
       <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary text-white font-display font-bold text-2xl mb-3">K</div>
       <h1 class="font-display text-2xl font-bold">Masuk ke Kasirku</h1>
-      <p id="drive-status" class="text-sm text-primary mt-1">DataBase tersambung</p>
+      <p id="drive-status" class="text-sm text-primary mt-1">Database tersambung</p>
+      <button onclick="gantiDatabase()" class="text-xs text-ink/40 hover:underline mt-1">Sambungkan Ulang</button>
     </div>
     <div class="bg-white border border-line rounded-2xl p-6">
       <label class="text-xs font-medium text-ink/70">Username</label>
@@ -170,12 +170,8 @@ const ICONS = {
 };
 function icon(name,cls){ return `<svg class="${cls||'w-5 h-5'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
-const GOOGLE_CLIENT_ID = '855971419916-loj02cbfbhvg81f87stseu1mb7kc2ep4.apps.googleusercontent.com';
-let CLIENT_ID = GOOGLE_CLIENT_ID;
-let tokenClient = null;
-let accessToken = null;
-let folderId = null;
-let fileId = null;
+const SCRIPT_URL_BAWAAN = 'https://script.google.com/macros/s/AKfycbwTB7gr8hHCIrm_7WVNzOo_cfbTefy5mhYW3SWEUGyvGLLNJPMW2Pa7SiWOGd7TAI_W/exec';
+let SCRIPT_URL = localStorage.getItem('kasirku_script_url') || SCRIPT_URL_BAWAAN;
 let saveTimer = null;
 
 let db = { produk:[], kategori:[], stokDasar:[], riwayatStok:[], member:[], voucher:[], user:[], transaksi:[] };
@@ -211,84 +207,38 @@ function hppProduk(p){
   return p.hpp||0;
 }
 
-/* ============ SETUP / OAUTH ============ */
+/* ============ SETUP / KONEKSI DATABASE (Google Apps Script Web App) ============ */
 
-function initGoogle(){
-  if(!CLIENT_ID) return;
-  if(typeof google === 'undefined'){ setTimeout(initGoogle, 300); return; }
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: CLIENT_ID,
-    scope: 'https://www.googleapis.com/auth/drive.file',
-    callback: onTokenReceived
-  });
-  tokenClient.requestAccessToken();
+function initApp(){
+  connectDatabase();
 }
 
-async function onTokenReceived(resp){
+async function connectDatabase(){
   const errEl = document.getElementById('setup-error');
-  if(resp.error){
-    errEl.textContent = 'Gagal menghubungkan Google Drive: ' + resp.error;
-    errEl.classList.remove('hidden');
-    return;
-  }
-  accessToken = resp.access_token;
+  errEl.classList.add('hidden');
   try{
-    await ensureDriveFile();
-    await loadFromDrive();
+    await loadFromServer();
     document.getElementById('setup-screen').classList.add('hidden');
     document.getElementById('login-screen').classList.remove('hidden');
     document.getElementById('login-screen').classList.add('flex');
   }catch(e){
-    errEl.textContent = 'Terjadi kesalahan saat mengakses Google Drive: ' + e.message;
+    document.getElementById('setup-screen').classList.remove('hidden');
+    document.getElementById('login-screen').classList.add('hidden');
+    document.getElementById('login-screen').classList.remove('flex');
+    errEl.textContent = 'Gagal terhubung ke database: ' + e.message;
     errEl.classList.remove('hidden');
   }
 }
 
-async function driveFetch(url, opts={}){
-  opts.headers = Object.assign({}, opts.headers, {Authorization: 'Bearer ' + accessToken});
-  const res = await fetch(url, opts);
-  if(res.status === 401){ throw new Error('Sesi Google Drive kadaluarsa, muat ulang halaman.'); }
-  return res;
+function gantiDatabase(){
+  location.reload();
 }
 
-async function ensureDriveFile(){
-  // find/create folder "kasirku"
-  let q = encodeURIComponent(`name='kasirku' and mimeType='application/vnd.google-apps.folder' and trashed=false`);
-  let res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);
-  let data = await res.json();
-  if(data.files && data.files.length){ folderId = data.files[0].id; }
-  else{
-    res = await driveFetch('https://www.googleapis.com/drive/v3/files', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({name:'kasirku', mimeType:'application/vnd.google-apps.folder'})
-    });
-    data = await res.json(); folderId = data.id;
-  }
-  // find/create file "kasirku-database.json" inside folder
-  q = encodeURIComponent(`name='kasirku-database.json' and '${folderId}' in parents and trashed=false`);
-  res = await driveFetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name)`);
-  data = await res.json();
-  if(data.files && data.files.length){ fileId = data.files[0].id; }
-  else{
-    const defaultDb = {
-      produk:[], kategori:['Minuman','Makanan','Snack','Lainnya'], stokDasar:[], riwayatStok:[], member:[], voucher:[],
-      user:[{id:uid(), username:'admin', password:'admin123', nama:'Administrator', role:'admin'}],
-      transaksi:[]
-    };
-    const boundary = 'kasirku_boundary_'+Date.now();
-    const metadata = {name:'kasirku-database.json', parents:[folderId], mimeType:'application/json'};
-    const body = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: application/json\r\n\r\n${JSON.stringify(defaultDb)}\r\n--${boundary}--`;
-    res = await driveFetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
-      method:'POST', headers:{'Content-Type':`multipart/related; boundary=${boundary}`}, body
-    });
-    data = await res.json(); fileId = data.id;
-  }
-}
-
-async function loadFromDrive(){
-  const res = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`);
+async function loadFromServer(){
+  const res = await fetch(SCRIPT_URL, {method:'GET'});
+  if(!res.ok) throw new Error('Server merespons status ' + res.status);
   const text = await res.text();
-  try{ db = JSON.parse(text); }catch(e){ db = {produk:[],member:[],voucher:[],user:[],transaksi:[]}; }
+  try{ db = JSON.parse(text); }catch(e){ throw new Error('URL benar tapi bukan database Kasirku yang valid.'); }
   db.produk = db.produk||[]; db.kategori = db.kategori||[]; db.stokDasar = db.stokDasar||[]; db.riwayatStok = db.riwayatStok||[];
   db.member = db.member||[]; db.voucher = db.voucher||[];
   db.user = db.user||[]; db.transaksi = db.transaksi||[];
@@ -300,15 +250,19 @@ function scheduleSave(){
   if(badge){ badge.textContent = 'Menyimpan...'; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-amber-light text-amber-dark'; }
   localStorage.setItem('kasirku_cache', JSON.stringify(db));
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveToDrive, 700);
+  saveTimer = setTimeout(saveToServer, 700);
 }
 
-async function saveToDrive(){
+async function saveToServer(){
   const badge = document.getElementById('sync-badge');
   try{
-    await driveFetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
-      method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(db)
+    // text/plain dipakai agar browser tidak melakukan CORS preflight ke Apps Script
+    const res = await fetch(SCRIPT_URL, {
+      method:'POST',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify(db)
     });
+    if(!res.ok) throw new Error('status ' + res.status);
     if(badge){ badge.textContent = 'Tersimpan'; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-primary-light text-primary-dark'; }
   }catch(e){
     if(badge){ badge.textContent = 'Gagal simpan'; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-danger/10 text-danger'; }
@@ -1390,7 +1344,7 @@ function hapusUser(id){
 
 /* ============ INIT ============ */
 window.addEventListener('DOMContentLoaded', ()=>{
-  initGoogle();
+  initApp();
 });
 </script>
 </body>

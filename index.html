@@ -175,7 +175,7 @@ let SCRIPT_URL = localStorage.getItem('kasirku_script_url') || SCRIPT_URL_BAWAAN
 let saveTimer = null;
 
 let db = { produk:[], kategori:[], stokDasar:[], riwayatStok:[], member:[], voucher:[], user:[], transaksi:[] };
-let session = { user:null, page:'dashboard', cart:[], member:null, voucher:null, kategoriFilter:null };
+let session = { user:null, page:'dashboard', cart:[], member:null, voucher:null, kategoriFilter:null, metodeBayar:'tunai', buktiFoto:null };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function rupiah(n){ return 'Rp' + Math.round(n||0).toLocaleString('id-ID'); }
@@ -504,18 +504,22 @@ function renderKasir(){
       <div class="border-t border-dashed border-line my-3"></div>
       <div id="cart-summary" class="space-y-1 font-num text-sm"></div>
       <div class="mt-3">
-        <label class="text-xs font-medium text-ink/60">Jumlah Bayar</label>
-        <input id="bayar-input" type="number" oninput="renderSummary()" placeholder="0" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm font-num">
+        <label class="text-xs font-medium text-ink/60">Metode Pembayaran</label>
+        <div id="metode-bayar-chips" class="grid grid-cols-3 gap-2 mt-1"></div>
       </div>
+      <div id="metode-bayar-area" class="mt-3"></div>
       <div id="kembalian-row" class="flex justify-between text-sm font-num mt-2"></div>
       <button onclick="bayarTransaksi()" class="w-full mt-3 bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Bayar</button>
     </div>
   </div>`;
   document.getElementById('main-content').innerHTML = html;
   session.kategoriFilter = null;
+  session.metodeBayar = 'tunai';
+  session.buktiFoto = null;
   renderKategoriChips();
   renderProdukGrid();
   renderCart();
+  renderMetodeBayar();
 }
 function renderKategoriChips(){
   const chips = ['Semua', ...db.kategori];
@@ -601,6 +605,80 @@ function terapkanVoucher(){
   else{ session.voucher=v; infoEl.innerHTML = `<span class="text-primary">Berhasil: ${v.tipe==='persen'?v.nilai+'%':rupiah(v.nilai)} diterapkan.</span>`; }
   renderSummary();
 }
+/* ============ METODE PEMBAYARAN & BUKTI FOTO ============ */
+function renderMetodeBayar(){
+  const metodes = [
+    {key:'tunai', label:'Tunai', icon:'💵'},
+    {key:'transfer', label:'Transfer', icon:'🏦'},
+    {key:'qris', label:'QRIS', icon:'📱'}
+  ];
+  const chips = document.getElementById('metode-bayar-chips');
+  if(!chips) return;
+  chips.innerHTML = metodes.map(m=>`
+    <button type="button" onclick="pilihMetodeBayar('${m.key}')" class="py-2 rounded-lg text-xs font-medium border transition ${session.metodeBayar===m.key?'bg-primary text-white border-primary':'bg-white border-line text-ink/70 hover:border-primary'}">${m.icon} ${m.label}</button>
+  `).join('');
+  renderMetodeBayarArea();
+}
+function pilihMetodeBayar(m){
+  session.metodeBayar = m;
+  renderMetodeBayar();
+  renderSummary();
+}
+function renderMetodeBayarArea(){
+  const area = document.getElementById('metode-bayar-area');
+  if(!area) return;
+  if(session.metodeBayar==='tunai'){
+    area.innerHTML = `
+      <label class="text-xs font-medium text-ink/60">Jumlah Bayar</label>
+      <input id="bayar-input" type="number" oninput="renderSummary()" placeholder="0" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm font-num">`;
+  }else{
+    const labelMetode = session.metodeBayar==='transfer' ? 'Transfer Bank' : 'QRIS';
+    area.innerHTML = `
+      <label class="text-xs font-medium text-ink/60">Bukti Pembayaran ${labelMetode}</label>
+      <div class="mt-1">
+        ${session.buktiFoto ? `
+          <div class="relative">
+            <img src="${session.buktiFoto}" class="w-full max-h-48 object-contain rounded-lg border border-line bg-cream">
+            <button type="button" onclick="hapusBuktiFoto()" class="absolute top-1.5 right-1.5 bg-danger text-white text-xs w-6 h-6 rounded-full leading-none">✕</button>
+          </div>
+        ` : `
+          <label class="flex flex-col items-center justify-center gap-1 border-2 border-dashed border-line rounded-lg py-6 cursor-pointer text-ink/50 text-xs hover:border-primary hover:text-primary transition">
+            <span class="text-lg">📷</span>
+            <span>Foto / Unggah Bukti ${labelMetode}</span>
+            <input type="file" accept="image/*" capture="environment" class="hidden" onchange="onBuktiFotoChange(event)">
+          </label>
+        `}
+      </div>`;
+  }
+}
+function onBuktiFotoChange(e){
+  const file = e.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = function(ev){
+    const img = new Image();
+    img.onload = function(){
+      const maxDim = 1000;
+      let w = img.width, h = img.height;
+      if(w>maxDim || h>maxDim){
+        if(w>=h){ h = Math.round(h*maxDim/w); w = maxDim; }
+        else{ w = Math.round(w*maxDim/h); h = maxDim; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img,0,0,w,h);
+      session.buktiFoto = canvas.toDataURL('image/jpeg', 0.7);
+      renderMetodeBayarArea();
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+function hapusBuktiFoto(){
+  session.buktiFoto = null;
+  renderMetodeBayarArea();
+}
+
 function computeTotals(){
   const subtotal = session.cart.reduce((s,c)=>s+c.harga*c.qty,0);
   let diskon = 0;
@@ -620,16 +698,29 @@ function renderSummary(){
     <div class="flex justify-between"><span class="text-ink/60">Subtotal</span><span>${rupiah(subtotal)}</span></div>
     ${diskon>0?`<div class="flex justify-between text-amber-dark"><span>Diskon</span><span>-${rupiah(diskon)}</span></div>`:''}
     <div class="flex justify-between font-semibold text-base pt-1 border-t border-line mt-1"><span>Total</span><span>${rupiah(total)}</span></div>`;
-  const bayar = parseFloat(document.getElementById('bayar-input')?.value)||0;
-  const kembalian = bayar - total;
   const el = document.getElementById('kembalian-row');
-  if(el) el.innerHTML = `<span class="text-ink/60">Kembalian</span><span class="${kembalian<0?'text-danger':''}">${rupiah(Math.max(kembalian,kembalian))}</span>`;
+  if(!el) return;
+  if(session.metodeBayar==='tunai'){
+    const bayar = parseFloat(document.getElementById('bayar-input')?.value)||0;
+    const kembalian = bayar - total;
+    el.innerHTML = `<span class="text-ink/60">Kembalian</span><span class="${kembalian<0?'text-danger':''}">${rupiah(Math.max(kembalian,kembalian))}</span>`;
+  }else{
+    el.innerHTML = '';
+  }
 }
 function bayarTransaksi(){
   if(session.cart.length===0){ alert('Keranjang masih kosong.'); return; }
   const {subtotal,diskon,total} = computeTotals();
-  const bayar = parseFloat(document.getElementById('bayar-input').value)||0;
-  if(bayar<total){ alert('Jumlah bayar kurang dari total.'); return; }
+  const metode = session.metodeBayar || 'tunai';
+  let bayar, buktiFoto = null;
+  if(metode==='tunai'){
+    bayar = parseFloat(document.getElementById('bayar-input').value)||0;
+    if(bayar<total){ alert('Jumlah bayar kurang dari total.'); return; }
+  }else{
+    if(!session.buktiFoto){ alert('Foto bukti pembayaran '+(metode==='transfer'?'transfer':'QRIS')+' wajib dilampirkan.'); return; }
+    bayar = total;
+    buktiFoto = session.buktiFoto;
+  }
   for(const c of session.cart){
     const p = db.produk.find(x=>x.id===c.produkId);
     if(!p || stokEfektif(p)<c.qty){ alert('Stok tidak cukup untuk '+c.nama); return; }
@@ -644,14 +735,16 @@ function bayarTransaksi(){
     memberId: session.member?session.member.id:null, memberNama: session.member?session.member.nama:'Umum',
     items: session.cart.map(c=>({produkId:c.produkId,nama:c.nama,qty:c.qty,harga:c.harga,subtotal:c.harga*c.qty})),
     voucherKode: session.voucher?session.voucher.kode:null,
-    subtotal, diskon, total, bayar, kembalian: bayar-total
+    subtotal, diskon, total, bayar, kembalian: bayar-total,
+    metodeBayar: metode, buktiFoto
   };
   db.transaksi.push(trx);
   session.cart = []; session.member = null; session.voucher = null;
+  session.metodeBayar = 'tunai'; session.buktiFoto = null;
   document.getElementById('member-hp').value=''; document.getElementById('member-info').innerHTML='';
   document.getElementById('voucher-kode').value=''; document.getElementById('voucher-info').innerHTML='';
-  document.getElementById('bayar-input').value='';
   document.getElementById('catatan-pesanan').value='';
+  renderMetodeBayar();
   scheduleSave();
   renderProdukGrid(); renderCart();
   tampilkanStruk(trx.id);
@@ -680,11 +773,15 @@ function buildReceiptHtml(t){
     <div style="display:flex;justify-content:space-between;"><span>Subtotal</span><span>${rupiah(t.subtotal)}</span></div>
     ${t.diskon>0?`<div style="display:flex;justify-content:space-between;"><span>Diskon${t.voucherKode?' ('+esc(t.voucherKode)+')':''}</span><span>-${rupiah(t.diskon)}</span></div>`:''}
     <div style="display:flex;justify-content:space-between;font-weight:600;"><span>Total</span><span>${rupiah(t.total)}</span></div>
+    <div style="display:flex;justify-content:space-between;"><span>Metode</span><span>${labelMetodeBayar(t.metodeBayar)}</span></div>
     <div style="display:flex;justify-content:space-between;"><span>Bayar</span><span>${rupiah(t.bayar)}</span></div>
     <div style="display:flex;justify-content:space-between;"><span>Kembali</span><span>${rupiah(t.kembalian)}</span></div>
     ${t.catatan?`<div>${garis}</div><div>Catatan: ${esc(t.catatan)}</div>`:''}
     <div>${garis}</div>
     <div style="text-align:center;">Terima kasih!</div>`;
+}
+function labelMetodeBayar(m){
+  return m==='transfer' ? 'Transfer' : m==='qris' ? 'QRIS' : 'Tunai';
 }
 function buildLabelHtml(t){
   const labels = [];
@@ -708,10 +805,26 @@ function tampilkanStruk(id){
   openModal(`
     <h3 class="font-display font-semibold text-lg mb-4">Struk Transaksi</h3>
     <div class="font-num text-xs border border-dashed border-line rounded-xl p-4 bg-paper2">${buildReceiptHtml(t)}</div>
+    ${t.buktiFoto ? `
+    <div class="mt-4">
+      <p class="text-xs font-medium text-ink/60 mb-1.5">Bukti ${labelMetodeBayar(t.metodeBayar)}</p>
+      <img src="${t.buktiFoto}" class="w-full max-h-56 object-contain rounded-lg border border-line bg-paper2 cursor-pointer" onclick="lihatBuktiFoto('${t.id}')">
+    </div>` : ''}
     <div class="flex gap-2 mt-5">
       <button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Tutup</button>
       <button onclick="printLabel('${t.id}')" class="flex-1 py-2.5 rounded-lg bg-amber text-white text-sm font-medium">Cetak Label</button>
       <button onclick="printStruk('${t.id}')" class="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium">Cetak Struk</button>
+    </div>`);
+}
+function lihatBuktiFoto(id){
+  const t = db.transaksi.find(x=>x.id===id);
+  if(!t || !t.buktiFoto) return;
+  openModal(`
+    <h3 class="font-display font-semibold text-lg mb-4">Bukti ${labelMetodeBayar(t.metodeBayar)}</h3>
+    <img src="${t.buktiFoto}" class="w-full rounded-lg border border-line">
+    <div class="flex gap-2 mt-5">
+      <button onclick="tampilkanStruk('${t.id}')" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Kembali</button>
+      <button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg bg-primary text-white text-sm font-medium">Tutup</button>
     </div>`);
 }
 function printStruk(id){
@@ -1256,7 +1369,7 @@ function renderLaporan(){
     </div>
     <div class="bg-white border border-line rounded-2xl overflow-x-auto">
       <table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line">
-        <th class="p-3">Tanggal</th><th class="p-3">Kasir</th><th class="p-3">Member</th><th class="p-3">Item</th><th class="p-3">Voucher</th><th class="p-3">Diskon</th><th class="p-3">Total</th><th class="p-3"></th>
+        <th class="p-3">Tanggal</th><th class="p-3">Kasir</th><th class="p-3">Member</th><th class="p-3">Item</th><th class="p-3">Voucher</th><th class="p-3">Diskon</th><th class="p-3">Total</th><th class="p-3">Metode</th><th class="p-3"></th>
       </tr></thead><tbody id="laporan-tbody"></tbody></table>
     </div>
     <div id="laporan-total" class="text-right font-num text-sm mt-3 font-semibold"></div>`;
@@ -1279,8 +1392,9 @@ function renderLaporanTable(){
       <td class="p-3 font-num text-xs">${t.voucherKode?esc(t.voucherKode):'-'}</td>
       <td class="p-3 font-num">${rupiah(t.diskon||0)}</td>
       <td class="p-3 font-num font-medium">${rupiah(t.total)}</td>
+      <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full ${t.metodeBayar==='tunai'||!t.metodeBayar?'bg-primary-light text-primary-dark':'bg-amber-light text-amber-dark'}">${labelMetodeBayar(t.metodeBayar)}</span>${t.buktiFoto?`<button onclick="lihatBuktiFoto('${t.id}')" class="block text-primary text-[11px] mt-1">Lihat Bukti</button>`:''}</td>
       <td class="p-3 text-right"><button onclick="tampilkanStruk('${t.id}')" class="text-primary text-xs">Cetak</button></td>
-    </tr>`).join('') || `<tr><td colspan="8" class="p-6 text-center text-ink/40">Tidak ada transaksi pada rentang ini.</td></tr>`;
+    </tr>`).join('') || `<tr><td colspan="9" class="p-6 text-center text-ink/40">Tidak ada transaksi pada rentang ini.</td></tr>`;
   document.getElementById('laporan-total').textContent = 'Total: ' + rupiah(list.reduce((s,t)=>s+t.total,0)) + ' (' + list.length + ' transaksi)';
 }
 

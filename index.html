@@ -145,6 +145,7 @@
 const MENUS = [
   {id:'dashboard', label:'Dashboard', icon:'grid', roles:['admin']},
   {id:'kasir', label:'Kasir', icon:'cart', roles:['admin','kasir']},
+  {id:'pesanan', label:'Monitoring Pesanan', icon:'clock', roles:['admin','kasir']},
   {id:'produk', label:'Produk', icon:'box', roles:['admin','kasir']},
   {id:'kategori', label:'Kategori', icon:'layers', roles:['admin','kasir']},
   {id:'stokdasar', label:'Stok Dasar', icon:'archive', roles:['admin','kasir']},
@@ -167,6 +168,7 @@ const ICONS = {
   tag:'<path d="M20 12l-8 8-9-9V3h8l9 9z"/><circle cx="7.5" cy="7.5" r="1.3"/>',
   chart:'<path d="M4 20V10M11 20V4M18 20v-7"/>',
   user:'<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
+  clock:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/>',
 };
 function icon(name,cls){ return `<svg class="${cls||'w-5 h-5'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
@@ -329,7 +331,7 @@ function goPage(id){
     el.classList.toggle('nav-active', el.dataset.nav===id);
   });
   document.getElementById('page-title').textContent = (menu?menu.label:'Dashboard');
-  const renderers = {dashboard:renderDashboard, kasir:renderKasir, produk:renderProduk, kategori:renderKategori, stokdasar:renderStokDasar, penambahanstok:renderPenambahanStok, member:renderMember, diskon:renderDiskon, hpp:renderHpp, laporan:renderLaporan, user:renderUser};
+  const renderers = {dashboard:renderDashboard, kasir:renderKasir, pesanan:renderPesanan, produk:renderProduk, kategori:renderKategori, stokdasar:renderStokDasar, penambahanstok:renderPenambahanStok, member:renderMember, diskon:renderDiskon, hpp:renderHpp, laporan:renderLaporan, user:renderUser};
   (renderers[id]||renderKasir)();
 }
 
@@ -605,6 +607,70 @@ function terapkanVoucher(){
   else{ session.voucher=v; infoEl.innerHTML = `<span class="text-primary">Berhasil: ${v.tipe==='persen'?v.nilai+'%':rupiah(v.nilai)} diterapkan.</span>`; }
   renderSummary();
 }
+/* ============ MONITORING PESANAN ============ */
+function renderPesanan(){
+  const html = `
+  <div class="flex flex-wrap gap-2 mb-4 items-end">
+    <div><label class="text-xs text-ink/60">Tanggal</label><input id="pesanan-tanggal" type="date" onchange="renderPesananList()" class="block mt-1 px-3 py-2 border border-line rounded-lg text-sm bg-white"></div>
+    <button onclick="document.getElementById('pesanan-tanggal').value='';renderPesananList()" class="px-3 py-2 border border-line rounded-lg text-sm bg-white text-ink/70">Semua Tanggal</button>
+    <button onclick="renderPesananList()" class="px-3 py-2 border border-line rounded-lg text-sm bg-white text-ink/70">Muat Ulang</button>
+  </div>
+  <div class="grid md:grid-cols-2 gap-4">
+    <div>
+      <h3 class="font-display font-semibold mb-2 flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-amber"></span>Disiapkan <span id="count-disiapkan" class="text-xs text-ink/40 font-normal"></span></h3>
+      <div id="pesanan-disiapkan" class="space-y-3"></div>
+    </div>
+    <div>
+      <h3 class="font-display font-semibold mb-2 flex items-center gap-2"><span class="w-2 h-2 rounded-full bg-primary"></span>Selesai <span id="count-selesai" class="text-xs text-ink/40 font-normal"></span></h3>
+      <div id="pesanan-selesai" class="space-y-3"></div>
+    </div>
+  </div>`;
+  document.getElementById('main-content').innerHTML = html;
+  document.getElementById('pesanan-tanggal').value = todayStr();
+  renderPesananList();
+}
+function renderPesananList(){
+  const tgl = document.getElementById('pesanan-tanggal').value;
+  let list = [...db.transaksi].sort((a,b)=>a.tanggal.localeCompare(b.tanggal));
+  if(tgl) list = list.filter(t=>t.tanggal.slice(0,10)===tgl);
+  const disiapkan = list.filter(t=>(t.status||'disiapkan')==='disiapkan');
+  const selesai = list.filter(t=>t.status==='selesai');
+  document.getElementById('count-disiapkan').textContent = disiapkan.length?`(${disiapkan.length})`:'';
+  document.getElementById('count-selesai').textContent = selesai.length?`(${selesai.length})`:'';
+  document.getElementById('pesanan-disiapkan').innerHTML = disiapkan.map(t=>pesananCardHtml(t,'disiapkan')).join('')
+    || `<div class="text-center text-ink/40 text-sm py-8 bg-white border border-dashed border-line rounded-xl">Tidak ada pesanan yang sedang disiapkan.</div>`;
+  document.getElementById('pesanan-selesai').innerHTML = selesai.map(t=>pesananCardHtml(t,'selesai')).join('')
+    || `<div class="text-center text-ink/40 text-sm py-8 bg-white border border-dashed border-line rounded-xl">Belum ada pesanan selesai.</div>`;
+}
+function pesananCardHtml(t, kolom){
+  const itemsTxt = t.items.map(i=>esc(i.nama)+' x'+i.qty).join(', ');
+  return `
+  <div class="bg-white border border-line rounded-xl p-4">
+    <div class="flex justify-between items-start gap-2 mb-1">
+      <div>
+        <div class="font-num font-semibold text-sm">${t.nomorAntrian?'No. Antrian '+t.nomorAntrian:'-'}</div>
+        <div class="text-xs text-ink/50 mt-0.5">${t.tanggal.slice(0,10)} ${t.tanggal.slice(11,16)} · ${esc(t.kasirNama)}${t.memberNama&&t.memberNama!=='Umum'?' · '+esc(t.memberNama):''}</div>
+      </div>
+      <span class="text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${kolom==='disiapkan'?'bg-amber-light text-amber-dark':'bg-primary-light text-primary-dark'}">${kolom==='disiapkan'?'Disiapkan':'Selesai'}</span>
+    </div>
+    <div class="text-sm text-ink/70 mt-2">${itemsTxt}</div>
+    ${t.catatan?`<div class="text-xs text-amber-dark mt-1">Catatan: ${esc(t.catatan)}</div>`:''}
+    <div class="flex gap-2 mt-3">
+      ${kolom==='disiapkan'
+        ? `<button onclick="ubahStatusPesanan('${t.id}','selesai')" class="flex-1 py-2 rounded-lg bg-primary hover:bg-primary-dark text-white text-xs font-medium transition">✓ Tandai Selesai</button>`
+        : `<button onclick="ubahStatusPesanan('${t.id}','disiapkan')" class="flex-1 py-2 rounded-lg border border-line text-xs text-ink/70">Kembalikan ke Disiapkan</button>`}
+      <button onclick="tampilkanStruk('${t.id}')" class="px-3 py-2 rounded-lg border border-line text-xs">Struk</button>
+    </div>
+  </div>`;
+}
+function ubahStatusPesanan(id, status){
+  const t = db.transaksi.find(x=>x.id===id);
+  if(!t) return;
+  t.status = status;
+  scheduleSave();
+  renderPesananList();
+}
+
 /* ============ METODE PEMBAYARAN & BUKTI FOTO ============ */
 function renderMetodeBayar(){
   const metodes = [
@@ -736,7 +802,8 @@ function bayarTransaksi(){
     items: session.cart.map(c=>({produkId:c.produkId,nama:c.nama,qty:c.qty,harga:c.harga,subtotal:c.harga*c.qty})),
     voucherKode: session.voucher?session.voucher.kode:null,
     subtotal, diskon, total, bayar, kembalian: bayar-total,
-    metodeBayar: metode, buktiFoto
+    metodeBayar: metode, buktiFoto,
+    status: 'disiapkan'
   };
   db.transaksi.push(trx);
   session.cart = []; session.member = null; session.voucher = null;

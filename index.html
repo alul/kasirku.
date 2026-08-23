@@ -109,7 +109,7 @@
         </div>
         <div id="sync-badge" class="text-xs font-num px-2.5 py-1 rounded-full bg-primary-light text-primary-dark">Tersimpan</div>
       </header>
-      <main id="main-content" class="flex-1 p-4 md:p-6 overflow-y-auto"></main>
+      <main id="main-content" class="flex-1 p-4 md:p-6 overflow-y-auto pb-24 md:pb-6"></main>
     </div>
   </div>
 
@@ -172,7 +172,7 @@ const ICONS = {
 };
 function icon(name,cls){ return `<svg class="${cls||'w-5 h-5'}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]||''}</svg>`; }
 
-const SCRIPT_URL_BAWAAN = 'https://script.google.com/macros/s/AKfycbwTB7gr8hHCIrm_7WVNzOo_cfbTefy5mhYW3SWEUGyvGLLNJPMW2Pa7SiWOGd7TAI_W/exec';
+const SCRIPT_URL_BAWAAN = 'https://script.google.com/macros/s/AKfycbxcZvj_ra04vLOVtGZZ9lXX5xqPciG5UGERdPye8CO54Hg2O7sZVyX9XlbAZY-ojRRb/exec';
 let SCRIPT_URL = localStorage.getItem('kasirku_script_url') || SCRIPT_URL_BAWAAN;
 let saveTimer = null;
 
@@ -182,7 +182,16 @@ let session = { user:null, page:'dashboard', cart:[], member:null, voucher:null,
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 function rupiah(n){ return 'Rp' + Math.round(n||0).toLocaleString('id-ID'); }
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
-function todayStr(){ return new Date().toISOString().slice(0,10); }
+function todayStr(){ return localDateStr(new Date()); }
+function localDateStr(d){
+  const y = d.getFullYear(), m = String(d.getMonth()+1).padStart(2,'0'), day = String(d.getDate()).padStart(2,'0');
+  return `${y}-${m}-${day}`;
+}
+function nowLocalISO(){
+  const d = new Date();
+  const p = n => String(n).padStart(2,'0');
+  return `${localDateStr(d)}T${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
 
 /* ============ STOK EFEKTIF (mandiri vs terhubung ke stok dasar) ============ */
 function stokEfektif(p){
@@ -249,13 +258,15 @@ async function loadFromServer(){
 
 function scheduleSave(){
   const badge = document.getElementById('sync-badge');
-  if(badge){ badge.textContent = 'Menyimpan...'; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-amber-light text-amber-dark'; }
+  if(badge){ badge.textContent = 'Menyimpan...'; badge.title=''; badge.onclick=null; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-amber-light text-amber-dark cursor-default'; }
   localStorage.setItem('kasirku_cache', JSON.stringify(db));
+  localStorage.setItem('kasirku_belum_tersimpan', '1');
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(saveToServer, 700);
+  saveTimer = setTimeout(()=>saveToServer(0), 700);
 }
 
-async function saveToServer(){
+async function saveToServer(percobaan){
+  percobaan = percobaan || 0;
   const badge = document.getElementById('sync-badge');
   try{
     // text/plain dipakai agar browser tidak melakukan CORS preflight ke Apps Script
@@ -264,12 +275,32 @@ async function saveToServer(){
       headers:{'Content-Type':'text/plain;charset=utf-8'},
       body: JSON.stringify(db)
     });
-    if(!res.ok) throw new Error('status ' + res.status);
-    if(badge){ badge.textContent = 'Tersimpan'; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-primary-light text-primary-dark'; }
+    if(!res.ok) throw new Error('Server merespons status ' + res.status);
+    const teks = await res.text();
+    let hasil;
+    try{ hasil = JSON.parse(teks); }catch(e){ throw new Error('Respons server tidak valid: ' + teks.slice(0,120)); }
+    if(hasil && hasil.status !== 'ok') throw new Error(hasil.pesan || 'Server menolak data yang dikirim.');
+    localStorage.removeItem('kasirku_belum_tersimpan');
+    if(badge){ badge.textContent = 'Tersimpan'; badge.title=''; badge.onclick=null; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-primary-light text-primary-dark cursor-default'; }
   }catch(e){
-    if(badge){ badge.textContent = 'Gagal simpan'; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-danger/10 text-danger'; }
+    console.error('Gagal menyimpan ke database:', e);
+    if(percobaan < 2){
+      // coba lagi otomatis (1x setelah 1.5 detik, 1x setelah 3 detik)
+      setTimeout(()=>saveToServer(percobaan+1), 1500 * (percobaan+1));
+      return;
+    }
+    if(badge){
+      badge.textContent = 'Gagal simpan';
+      badge.title = 'Klik untuk coba simpan lagi. Sebab: ' + e.message;
+      badge.className = 'text-xs font-num px-2.5 py-1 rounded-full bg-danger/10 text-danger cursor-pointer';
+      badge.onclick = ()=>saveToServer(0);
+    }
   }
 }
+
+window.addEventListener('online', ()=>{
+  if(localStorage.getItem('kasirku_belum_tersimpan')==='1' && typeof db!=='undefined' && db){ saveToServer(0); }
+});
 
 /* ============ AUTH (app-level) ============ */
 function doLogin(){
@@ -370,9 +401,17 @@ function renderDashboard(){
   const jumlahTr = trToday.length;
   const rataRata = jumlahTr? Math.round(totalHariIni/jumlahTr) : 0;
   const stokMenipis = db.produk.filter(p=>p.stok<=5);
-  const counter = {};
-  db.transaksi.forEach(t=>t.items.forEach(it=>{ counter[it.nama]=(counter[it.nama]||0)+it.qty; }));
-  const terlaris = Object.entries(counter).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const perKategoriHitung = {};
+  db.transaksi.forEach(t=>t.items.forEach(it=>{
+    const kat = ambilKategoriItem(it);
+    if(!perKategoriHitung[kat]) perKategoriHitung[kat] = {};
+    perKategoriHitung[kat][it.nama] = (perKategoriHitung[kat][it.nama]||0) + it.qty;
+  }));
+  const kategoriTerlaris = Object.entries(perKategoriHitung).map(([kat,items])=>({
+    kategori: kat,
+    total: Object.values(items).reduce((s,q)=>s+q,0),
+    items: Object.entries(items).sort((a,b)=>b[1]-a[1]).slice(0,5)
+  })).sort((a,b)=>b.total-a.total);
   const recent = [...db.transaksi].sort((a,b)=>b.tanggal.localeCompare(a.tanggal)).slice(0,6);
 
   document.getElementById('main-content').innerHTML = `
@@ -401,8 +440,12 @@ function renderDashboard(){
     </div>
     <div class="grid md:grid-cols-2 gap-4">
       <div class="bg-white border border-line rounded-2xl p-5">
-        <h3 class="font-display font-semibold mb-3">Produk Terlaris</h3>
-        ${terlaris.length? terlaris.map(([n,q],i)=>`<div class="flex justify-between py-1.5 text-sm border-b border-line last:border-0"><span>${i+1}. ${esc(n)}</span><span class="font-num text-ink/60">${q} terjual</span></div>`).join('') : '<p class="text-sm text-ink/40">Belum ada transaksi.</p>'}
+        <h3 class="font-display font-semibold mb-3">Produk Terlaris per Kategori</h3>
+        ${kategoriTerlaris.length? kategoriTerlaris.map(k=>`
+          <div class="mb-3 last:mb-0">
+            <div class="text-xs font-semibold uppercase tracking-wide text-primary mb-1">${esc(k.kategori)}</div>
+            ${k.items.map(([n,q])=>`<div class="flex justify-between py-1 text-sm border-b border-line last:border-0"><span>${esc(n)}</span><span class="font-num text-ink/60">${q}</span></div>`).join('')}
+          </div>`).join('') : '<p class="text-sm text-ink/40">Belum ada transaksi.</p>'}
       </div>
       <div class="bg-white border border-line rounded-2xl p-5">
         <h3 class="font-display font-semibold mb-3">Transaksi Terbaru</h3>
@@ -422,7 +465,7 @@ function renderChartMingguan(){
   const days = last7Days();
   const labels = days.map(fmtTanggalPendek);
   const data = days.map(d=>{
-    const key = d.toISOString().slice(0,10);
+    const key = localDateStr(d);
     return db.transaksi.filter(t=>t.tanggal.slice(0,10)===key).reduce((s,t)=>s+t.total,0);
   });
   if(chartMingguan) chartMingguan.destroy();
@@ -451,8 +494,7 @@ function renderChartKategori(){
   const perKategori = {};
   db.transaksi.filter(t=>new Date(t.tanggal)>=batas).forEach(t=>{
     t.items.forEach(it=>{
-      const p = db.produk.find(x=>x.id===it.produkId);
-      const kat = p ? (p.kategori||'Lainnya') : 'Lainnya';
+      const kat = ambilKategoriItem(it);
       perKategori[kat] = (perKategori[kat]||0) + it.subtotal;
     });
   });
@@ -796,10 +838,10 @@ function bayarTransaksi(){
   const nomorAntrian = db.transaksi.filter(t=>t.tanggal.slice(0,10)===todayStr()).length + 1;
   const catatan = (document.getElementById('catatan-pesanan').value||'').trim();
   const trx = {
-    id: uid(), tanggal: new Date().toISOString(), nomorAntrian, catatan,
+    id: uid(), tanggal: nowLocalISO(), nomorAntrian, catatan,
     kasirId: session.user.id, kasirNama: session.user.nama,
     memberId: session.member?session.member.id:null, memberNama: session.member?session.member.nama:'Umum',
-    items: session.cart.map(c=>({produkId:c.produkId,nama:c.nama,qty:c.qty,harga:c.harga,subtotal:c.harga*c.qty})),
+    items: session.cart.map(c=>{ const p = db.produk.find(x=>x.id===c.produkId); return {produkId:c.produkId,nama:c.nama,qty:c.qty,harga:c.harga,subtotal:c.harga*c.qty,kategori:(p&&p.kategori)||'Lainnya'}; }),
     voucherKode: session.voucher?session.voucher.kode:null,
     subtotal, diskon, total, bayar, kembalian: bayar-total,
     metodeBayar: metode, buktiFoto,
@@ -1217,7 +1259,7 @@ function simpanPenambahanStok(){
   if(!sd){ alert('Pilih item terlebih dahulu.'); return; }
   if(jumlah<=0){ alert('Jumlah harus lebih dari 0.'); return; }
   sd.stok += jumlah;
-  db.riwayatStok.push({id:uid(), tanggal:new Date().toISOString(), itemId:sd.id, itemNama:sd.nama, jumlah, userId:session.user.id, userNama:session.user.nama, catatan});
+  db.riwayatStok.push({id:uid(), tanggal:nowLocalISO(), itemId:sd.id, itemNama:sd.nama, jumlah, userId:session.user.id, userNama:session.user.nama, catatan});
   scheduleSave();
   renderPenambahanStok();
 }
@@ -1424,23 +1466,75 @@ function toggleVoucher(id){ const v=db.voucher.find(x=>x.id===id); v.aktif=!v.ak
 function hapusVoucher(id){ if(confirm('Hapus voucher ini?')){ db.voucher=db.voucher.filter(x=>x.id!==id); scheduleSave(); renderVoucherTable(); } }
 
 /* ============ LAPORAN TRANSAKSI ============ */
+function startOfWeekStr(d){
+  const dt = new Date(d);
+  const day = dt.getDay();
+  const diff = (day===0?-6:1-day);
+  dt.setDate(dt.getDate()+diff);
+  return localDateStr(dt);
+}
+function startOfMonthStr(d){
+  return localDateStr(new Date(d.getFullYear(), d.getMonth(), 1));
+}
+function setPeriodeLaporan(jenis, btn){
+  const hariIni = new Date();
+  let dari='', sampai='';
+  if(jenis==='hari'){ dari = todayStr(); sampai = todayStr(); }
+  else if(jenis==='minggu'){ dari = startOfWeekStr(hariIni); sampai = todayStr(); }
+  else if(jenis==='bulan'){ dari = startOfMonthStr(hariIni); sampai = todayStr(); }
+  document.getElementById('lap-dari').value = dari;
+  document.getElementById('lap-sampai').value = sampai;
+  document.querySelectorAll('.periode-chip').forEach(b=>b.classList.remove('bg-primary','text-white','border-primary'));
+  if(btn) btn.classList.add('bg-primary','text-white','border-primary');
+  renderLaporanTable();
+}
 function renderLaporan(){
   const kasirOptions = ['<option value="">Semua Kasir</option>'].concat(
     [...new Set(db.transaksi.map(t=>t.kasirNama))].map(n=>`<option value="${esc(n)}">${esc(n)}</option>`)
   ).join('');
   document.getElementById('main-content').innerHTML = `
+    <div class="flex flex-wrap gap-2 mb-3">
+      <button class="periode-chip px-3 py-1.5 rounded-full text-xs font-medium border border-line bg-white" onclick="setPeriodeLaporan('hari', this)">Hari Ini</button>
+      <button class="periode-chip px-3 py-1.5 rounded-full text-xs font-medium border border-line bg-white" onclick="setPeriodeLaporan('minggu', this)">Minggu Ini</button>
+      <button class="periode-chip px-3 py-1.5 rounded-full text-xs font-medium border border-line bg-white" onclick="setPeriodeLaporan('bulan', this)">Bulan Ini</button>
+      <button class="periode-chip px-3 py-1.5 rounded-full text-xs font-medium border border-line bg-white" onclick="setPeriodeLaporan('semua', this)">Semua</button>
+    </div>
     <div class="flex flex-wrap gap-2 mb-4 items-end">
       <div><label class="text-xs text-ink/60">Dari</label><input id="lap-dari" type="date" onchange="renderLaporanTable()" class="block mt-1 px-3 py-2 border border-line rounded-lg text-sm bg-white"></div>
       <div><label class="text-xs text-ink/60">Sampai</label><input id="lap-sampai" type="date" onchange="renderLaporanTable()" class="block mt-1 px-3 py-2 border border-line rounded-lg text-sm bg-white"></div>
       <div><label class="text-xs text-ink/60">Kasir</label><select id="lap-kasir" onchange="renderLaporanTable()" class="block mt-1 px-3 py-2 border border-line rounded-lg text-sm bg-white">${kasirOptions}</select></div>
     </div>
+
+    <div id="laporan-summary" class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5"></div>
+
+    <div class="grid lg:grid-cols-2 gap-4 mb-5">
+      <div class="bg-white border border-line rounded-2xl p-5">
+        <h3 class="font-display font-semibold mb-3">Penjualan per Kategori</h3>
+        <div class="overflow-x-auto"><table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line">
+          <th class="pb-2">Kategori</th><th class="pb-2 text-right">Qty</th><th class="pb-2 text-right">Omzet</th><th class="pb-2 text-right">%</th>
+        </tr></thead><tbody id="laporan-kategori-tbody"></tbody></table></div>
+      </div>
+      <div class="bg-white border border-line rounded-2xl p-5">
+        <h3 class="font-display font-semibold mb-3">Produk Terlaris (periode ini)</h3>
+        <div class="overflow-x-auto max-h-72 overflow-y-auto"><table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line sticky top-0 bg-white">
+          <th class="pb-2">Produk</th><th class="pb-2">Kategori</th><th class="pb-2 text-right">Qty</th><th class="pb-2 text-right">Omzet</th>
+        </tr></thead><tbody id="laporan-item-tbody"></tbody></table></div>
+      </div>
+    </div>
+
+    <h3 class="font-display font-semibold mb-2">Detail Transaksi</h3>
     <div class="bg-white border border-line rounded-2xl overflow-x-auto">
       <table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line">
         <th class="p-3">Tanggal</th><th class="p-3">Kasir</th><th class="p-3">Member</th><th class="p-3">Item</th><th class="p-3">Voucher</th><th class="p-3">Diskon</th><th class="p-3">Total</th><th class="p-3">Metode</th><th class="p-3"></th>
       </tr></thead><tbody id="laporan-tbody"></tbody></table>
     </div>
     <div id="laporan-total" class="text-right font-num text-sm mt-3 font-semibold"></div>`;
-  renderLaporanTable();
+  setPeriodeLaporan('hari', document.querySelector('.periode-chip'));
+}
+function ambilKategoriItem(it){
+  if(it.kategori) return it.kategori;
+  const p = db.produk.find(x=>x.id===it.produkId);
+  return (p && p.kategori) || 'Lainnya';
 }
 function renderLaporanTable(){
   const dari = document.getElementById('lap-dari').value;
@@ -1450,6 +1544,54 @@ function renderLaporanTable(){
   if(dari) list = list.filter(t=>t.tanggal.slice(0,10)>=dari);
   if(sampai) list = list.filter(t=>t.tanggal.slice(0,10)<=sampai);
   if(kasir) list = list.filter(t=>t.kasirNama===kasir);
+
+  // ringkasan
+  const omzet = list.reduce((s,t)=>s+t.total,0);
+  const jumlahTr = list.length;
+  const rataRata = jumlahTr? Math.round(omzet/jumlahTr) : 0;
+  const totalQty = list.reduce((s,t)=>s+t.items.reduce((s2,i)=>s2+i.qty,0),0);
+  document.getElementById('laporan-summary').innerHTML = [
+    statCard('Omzet', rupiah(omzet), 'primary'),
+    statCard('Jumlah Transaksi', jumlahTr, 'amber'),
+    statCard('Rata-rata / Transaksi', rupiah(rataRata), 'ink'),
+    statCard('Item Terjual', totalQty, 'primary')
+  ].join('');
+
+  // rekap per kategori
+  const kategoriMap = {};
+  list.forEach(t=>t.items.forEach(it=>{
+    const k = ambilKategoriItem(it);
+    if(!kategoriMap[k]) kategoriMap[k] = {qty:0, omzet:0};
+    kategoriMap[k].qty += it.qty;
+    kategoriMap[k].omzet += it.subtotal;
+  }));
+  const kategoriList = Object.entries(kategoriMap).sort((a,b)=>b[1].omzet-a[1].omzet);
+  document.getElementById('laporan-kategori-tbody').innerHTML = kategoriList.length ? kategoriList.map(([k,v])=>`
+    <tr class="border-b border-line last:border-0">
+      <td class="py-2">${esc(k)}</td>
+      <td class="py-2 text-right font-num">${v.qty}</td>
+      <td class="py-2 text-right font-num">${rupiah(v.omzet)}</td>
+      <td class="py-2 text-right font-num text-ink/50">${omzet? Math.round(v.omzet/omzet*100) : 0}%</td>
+    </tr>`).join('') : `<tr><td colspan="4" class="py-6 text-center text-ink/40">Belum ada penjualan pada periode ini.</td></tr>`;
+
+  // rekap per item/produk
+  const itemMap = {};
+  list.forEach(t=>t.items.forEach(it=>{
+    const key = it.produkId || it.nama;
+    if(!itemMap[key]) itemMap[key] = {nama:it.nama, kategori:ambilKategoriItem(it), qty:0, omzet:0};
+    itemMap[key].qty += it.qty;
+    itemMap[key].omzet += it.subtotal;
+  }));
+  const itemList = Object.values(itemMap).sort((a,b)=>b.qty-a.qty);
+  document.getElementById('laporan-item-tbody').innerHTML = itemList.length ? itemList.map((v,i)=>`
+    <tr class="border-b border-line last:border-0">
+      <td class="py-2">${i+1}. ${esc(v.nama)}</td>
+      <td class="py-2 text-ink/50 text-xs">${esc(v.kategori)}</td>
+      <td class="py-2 text-right font-num">${v.qty}</td>
+      <td class="py-2 text-right font-num">${rupiah(v.omzet)}</td>
+    </tr>`).join('') : `<tr><td colspan="4" class="py-6 text-center text-ink/40">Belum ada penjualan pada periode ini.</td></tr>`;
+
+  // detail transaksi
   document.getElementById('laporan-tbody').innerHTML = list.map(t=>`
     <tr class="border-b border-line last:border-0">
       <td class="p-3 font-num text-xs">${t.tanggal.slice(0,10)} ${t.tanggal.slice(11,16)}</td>
@@ -1462,7 +1604,7 @@ function renderLaporanTable(){
       <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full ${t.metodeBayar==='tunai'||!t.metodeBayar?'bg-primary-light text-primary-dark':'bg-amber-light text-amber-dark'}">${labelMetodeBayar(t.metodeBayar)}</span>${t.buktiFoto?`<button onclick="lihatBuktiFoto('${t.id}')" class="block text-primary text-[11px] mt-1">Lihat Bukti</button>`:''}</td>
       <td class="p-3 text-right"><button onclick="tampilkanStruk('${t.id}')" class="text-primary text-xs">Cetak</button></td>
     </tr>`).join('') || `<tr><td colspan="9" class="p-6 text-center text-ink/40">Tidak ada transaksi pada rentang ini.</td></tr>`;
-  document.getElementById('laporan-total').textContent = 'Total: ' + rupiah(list.reduce((s,t)=>s+t.total,0)) + ' (' + list.length + ' transaksi)';
+  document.getElementById('laporan-total').textContent = 'Total: ' + rupiah(omzet) + ' (' + jumlahTr + ' transaksi)';
 }
 
 /* ============ USER ============ */

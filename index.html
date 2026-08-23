@@ -320,14 +320,61 @@ function doLogin(){
   buildNav();
   const firstMenu = MENUS.find(m=>m.roles.includes(session.user.role));
   goPage(firstMenu ? firstMenu.id : 'kasir');
+  mulaiSinkronOtomatis();
 }
 function logout(){
+  hentikanSinkronOtomatis();
   session.user = null;
   document.getElementById('app').classList.add('hidden');
   document.getElementById('login-screen').classList.remove('hidden');
   document.getElementById('login-screen').classList.add('flex');
   document.getElementById('login-username').value='';
   document.getElementById('login-password').value='';
+}
+
+/* ============ SINKRONISASI OTOMATIS (REAL-TIME TANPA REFRESH) ============ */
+let pollTimer = null;
+const HALAMAN_AUTO_REFRESH = ['dashboard','pesanan','laporan','produk','stokdasar','member'];
+function mulaiSinkronOtomatis(){
+  hentikanSinkronOtomatis();
+  pollTimer = setInterval(sinkronOtomatis, 8000);
+}
+function hentikanSinkronOtomatis(){
+  if(pollTimer){ clearInterval(pollTimer); pollTimer = null; }
+}
+async function sinkronOtomatis(){
+  if(!session.user) return;
+  // jangan timpa data lokal yang masih menunggu tersimpan ke server
+  if(localStorage.getItem('kasirku_belum_tersimpan')==='1') return;
+  try{
+    const res = await fetch(SCRIPT_URL, {method:'GET', cache:'no-store'});
+    if(!res.ok) return;
+    const teks = await res.text();
+    let data;
+    try{ data = JSON.parse(teks); }catch(e){ return; }
+    if(data && data.status==='error') return;
+    const dataBaruStr = JSON.stringify(data);
+    if(dataBaruStr === JSON.stringify(db)) return; // tidak ada perubahan, tidak perlu render ulang
+    db = data;
+    db.produk = db.produk||[]; db.kategori = db.kategori||[]; db.stokDasar = db.stokDasar||[]; db.riwayatStok = db.riwayatStok||[];
+    db.member = db.member||[]; db.voucher = db.voucher||[];
+    db.user = db.user||[]; db.transaksi = db.transaksi||[];
+    localStorage.setItem('kasirku_cache', dataBaruStr);
+    terapkanDataBaruKeHalaman();
+  }catch(e){ /* koneksi bermasalah sesaat, coba lagi di siklus berikutnya */ }
+}
+function terapkanDataBaruKeHalaman(){
+  const halaman = session.page;
+  if(halaman==='kasir'){
+    // hanya perbarui grid produk & keranjang, tanpa mengganggu input yang sedang diisi kasir
+    renderProdukGrid();
+    renderCart();
+  } else if(HALAMAN_AUTO_REFRESH.includes(halaman)){
+    const fn = {dashboard:renderDashboard, pesanan:renderPesananList, laporan:renderLaporanTable, produk:renderProdukTable, stokdasar:renderStokDasarTable, member:renderMemberTable}[halaman];
+    if(fn) fn();
+  }
+  // halaman lain (kategori, penambahanstok, diskon, hpp, user) dibiarkan apa adanya
+  // agar form yang sedang diisi tidak tiba-tiba ter-reset.
 }
 
 /* ============ NAV / ROUTER ============ */
@@ -401,17 +448,6 @@ function renderDashboard(){
   const jumlahTr = trToday.length;
   const rataRata = jumlahTr? Math.round(totalHariIni/jumlahTr) : 0;
   const stokMenipis = db.produk.filter(p=>p.stok<=5);
-  const perKategoriHitung = {};
-  db.transaksi.forEach(t=>t.items.forEach(it=>{
-    const kat = ambilKategoriItem(it);
-    if(!perKategoriHitung[kat]) perKategoriHitung[kat] = {};
-    perKategoriHitung[kat][it.nama] = (perKategoriHitung[kat][it.nama]||0) + it.qty;
-  }));
-  const kategoriTerlaris = Object.entries(perKategoriHitung).map(([kat,items])=>({
-    kategori: kat,
-    total: Object.values(items).reduce((s,q)=>s+q,0),
-    items: Object.entries(items).sort((a,b)=>b[1]-a[1]).slice(0,5)
-  })).sort((a,b)=>b.total-a.total);
   const recent = [...db.transaksi].sort((a,b)=>b.tanggal.localeCompare(a.tanggal)).slice(0,6);
 
   document.getElementById('main-content').innerHTML = `
@@ -440,12 +476,11 @@ function renderDashboard(){
     </div>
     <div class="grid md:grid-cols-2 gap-4">
       <div class="bg-white border border-line rounded-2xl p-5">
-        <h3 class="font-display font-semibold mb-3">Produk Terlaris per Kategori</h3>
-        ${kategoriTerlaris.length? kategoriTerlaris.map(k=>`
-          <div class="mb-3 last:mb-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-primary mb-1">${esc(k.kategori)}</div>
-            ${k.items.map(([n,q])=>`<div class="flex justify-between py-1 text-sm border-b border-line last:border-0"><span>${esc(n)}</span><span class="font-num text-ink/60">${q}</span></div>`).join('')}
-          </div>`).join('') : '<p class="text-sm text-ink/40">Belum ada transaksi.</p>'}
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h3 class="font-display font-semibold">Item Terlaris per Kategori</h3>
+          <div id="dash-terlaris-chips" class="flex flex-wrap gap-1.5"></div>
+        </div>
+        <div id="dash-terlaris-list"></div>
       </div>
       <div class="bg-white border border-line rounded-2xl p-5">
         <h3 class="font-display font-semibold mb-3">Transaksi Terbaru</h3>
@@ -460,6 +495,49 @@ function renderDashboard(){
   renderChartMingguan();
   renderChartBulanan();
   renderChartKategori();
+  renderDashTerlarisKategori(dashTerlarisPeriode);
+}
+let dashTerlarisPeriode = 'hari';
+function renderDashTerlarisKategori(periode, btn){
+  dashTerlarisPeriode = periode || dashTerlarisPeriode;
+  const hariIni = new Date();
+  let dari = '', sampai = todayStr();
+  if(dashTerlarisPeriode==='hari'){ dari = todayStr(); }
+  else if(dashTerlarisPeriode==='minggu'){ dari = startOfWeekStr(hariIni); }
+  else if(dashTerlarisPeriode==='bulan'){ dari = startOfMonthStr(hariIni); }
+  const chipsEl = document.getElementById('dash-terlaris-chips');
+  const periodeChips = [
+    {key:'hari', label:'Hari Ini'},
+    {key:'minggu', label:'Minggu Ini'},
+    {key:'bulan', label:'Bulan Ini'},
+    {key:'semua', label:'Semua'}
+  ];
+  if(chipsEl){
+    chipsEl.innerHTML = periodeChips.map(c=>`<button onclick="renderDashTerlarisKategori('${c.key}')" class="px-2.5 py-1 rounded-full text-[11px] font-medium border ${dashTerlarisPeriode===c.key?'bg-primary text-white border-primary':'bg-white border-line text-ink/60'}">${c.label}</button>`).join('');
+  }
+  let list = db.transaksi;
+  if(dashTerlarisPeriode!=='semua'){
+    list = list.filter(t=>t.tanggal.slice(0,10)>=dari && t.tanggal.slice(0,10)<=sampai);
+  }
+  const perKategoriHitung = {};
+  list.forEach(t=>t.items.forEach(it=>{
+    const kat = ambilKategoriItem(it);
+    if(!perKategoriHitung[kat]) perKategoriHitung[kat] = {};
+    perKategoriHitung[kat][it.nama] = (perKategoriHitung[kat][it.nama]||0) + it.qty;
+  }));
+  const kategoriTerlaris = Object.entries(perKategoriHitung).map(([kat,items])=>({
+    kategori: kat,
+    total: Object.values(items).reduce((s,q)=>s+q,0),
+    items: Object.entries(items).sort((a,b)=>b[1]-a[1]).slice(0,5)
+  })).sort((a,b)=>b.total-a.total);
+  const listEl = document.getElementById('dash-terlaris-list');
+  if(listEl){
+    listEl.innerHTML = kategoriTerlaris.length? kategoriTerlaris.map(k=>`
+      <div class="mb-3 last:mb-0">
+        <div class="text-xs font-semibold uppercase tracking-wide text-primary mb-1">${esc(k.kategori)}</div>
+        ${k.items.map(([n,q])=>`<div class="flex justify-between py-1 text-sm border-b border-line last:border-0"><span>${esc(n)}</span><span class="font-num text-ink/60">${q}</span></div>`).join('')}
+      </div>`).join('') : '<p class="text-sm text-ink/40">Belum ada transaksi pada periode ini.</p>';
+  }
 }
 function renderChartMingguan(){
   const days = last7Days();

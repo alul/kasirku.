@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
-<title>Kasirku — Aplikasi Kasir</title>
+<title>Akademi Kopi & Dimsum — Aplikasi Kasir</title>
+<link rel="icon" type="image/png" href="https://raw.githubusercontent.com/alul/kasirku./refs/heads/root/akd.png">
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
@@ -47,13 +48,13 @@
 <div id="setup-screen" class="min-h-screen flex items-center justify-center p-6">
   <div class="w-full max-w-md">
     <div class="mb-8 text-center">
-      <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary text-white font-display font-bold text-2xl mb-3">K</div>
-      <h1 class="font-display text-2xl font-bold">Kasirku</h1>
+      <img src="https://raw.githubusercontent.com/alul/kasirku./refs/heads/root/akd.png" alt="Logo" class="w-14 h-14 rounded-xl object-cover mb-3 mx-auto">
+      <h1 class="font-display text-2xl font-bold">Akademi Kopi & Dimsum</h1>
       <p class="text-sm text-ink/60 mt-1">Aplikasi Kasir</p>
     </div>
     <div class="bg-white border border-line rounded-2xl p-6">
       <h2 class="font-display font-semibold mb-2">Menghubungkan Database...</h2>
-      <p class="text-sm text-ink/60 mb-4">Kasirku sedang otomatis menyambung ke database. Jika gagal (misal karena koneksi internet), klik tombol di bawah untuk mencoba lagi.</p>
+      <p class="text-sm text-ink/60 mb-4">Aplikasi sedang otomatis menyambung ke database. Jika gagal (misal karena koneksi internet), klik tombol di bawah untuk mencoba lagi.</p>
       <button onclick="connectDatabase()" class="w-full bg-primary hover:bg-primary-dark text-white font-medium py-2.5 rounded-lg transition">Coba Lagi</button>
       <p id="setup-error" class="text-danger text-sm mt-3 hidden"></p>
     </div>
@@ -65,8 +66,8 @@
 <div id="login-screen" class="min-h-screen hidden items-center justify-center p-6">
   <div class="w-full max-w-sm">
     <div class="mb-8 text-center">
-      <div class="inline-flex items-center justify-center w-14 h-14 rounded-xl bg-primary text-white font-display font-bold text-2xl mb-3">K</div>
-      <h1 class="font-display text-2xl font-bold">Masuk ke Kasirku</h1>
+      <img src="https://raw.githubusercontent.com/alul/kasirku./refs/heads/root/akd.png" alt="Logo" class="w-14 h-14 rounded-xl object-cover mb-3 mx-auto">
+      <h1 class="font-display text-2xl font-bold">Masuk ke Akademi Kopi & Dimsum</h1>
       <p id="drive-status" class="text-sm text-primary mt-1">Database tersambung</p>
       <button onclick="gantiDatabase()" class="text-xs text-ink/40 hover:underline mt-1">Sambungkan Ulang</button>
     </div>
@@ -87,8 +88,8 @@
     <!-- Sidebar (desktop) -->
     <aside class="desktop-only w-48 border-r border-line bg-white flex flex-col">
       <div class="px-4 py-4 flex items-center gap-2 border-b border-line">
-        <div class="w-7 h-7 rounded-lg bg-primary text-white font-display font-bold text-sm flex items-center justify-center">K</div>
-        <span class="font-display font-bold text-base">Kasirku</span>
+        <img src="https://raw.githubusercontent.com/alul/kasirku./refs/heads/root/akd.png" alt="Logo" class="w-7 h-7 rounded-lg object-cover">
+        <span class="font-display font-bold text-base">Akademi Kopi & Dimsum</span>
       </div>
       <nav id="side-nav" class="flex-1 py-3 px-2.5 space-y-0.5"></nav>
       <div class="px-3.5 py-3.5 border-t border-line">
@@ -120,8 +121,8 @@
   <div id="drawer-backdrop" class="mobile-only fixed inset-0 modal-backdrop hidden z-30" onclick="toggleDrawer(false)"></div>
   <div id="drawer" class="mobile-only fixed top-0 left-0 bottom-0 w-64 bg-white z-40 -translate-x-full transition-transform duration-200 flex flex-col">
     <div class="px-5 py-5 flex items-center gap-2 border-b border-line">
-      <div class="w-8 h-8 rounded-lg bg-primary text-white font-display font-bold flex items-center justify-center">K</div>
-      <span class="font-display font-bold text-lg">Kasirku</span>
+      <img src="https://raw.githubusercontent.com/alul/kasirku./refs/heads/root/akd.png" alt="Logo" class="w-8 h-8 rounded-lg object-cover">
+      <span class="font-display font-bold text-lg">Akademi Kopi & Dimsum</span>
     </div>
     <nav id="drawer-nav" class="flex-1 py-4 px-3 space-y-1"></nav>
     <div class="px-4 py-4 border-t border-line">
@@ -153,7 +154,7 @@ const MENUS = [
   {id:'member', label:'Member', icon:'users', roles:['admin','kasir']},
   {id:'diskon', label:'Diskon', icon:'tag', roles:['admin']},
   {id:'hpp', label:'HPP', icon:'calc', roles:['admin']},
-  {id:'laporan', label:'Laporan', icon:'chart', roles:['admin','kasir']},
+  {id:'laporan', label:'Laporan', icon:'chart', roles:['admin']},
   {id:'user', label:'User', icon:'user', roles:['admin']},
 ];
 const ICONS = {
@@ -249,7 +250,7 @@ async function loadFromServer(){
   const res = await fetch(SCRIPT_URL, {method:'GET'});
   if(!res.ok) throw new Error('Server merespons status ' + res.status);
   const text = await res.text();
-  try{ db = JSON.parse(text); }catch(e){ throw new Error('URL benar tapi bukan database Kasirku yang valid.'); }
+  try{ db = JSON.parse(text); }catch(e){ throw new Error('URL benar tapi bukan database yang valid.'); }
   db.produk = db.produk||[]; db.kategori = db.kategori||[]; db.stokDasar = db.stokDasar||[]; db.riwayatStok = db.riwayatStok||[];
   db.member = db.member||[]; db.voucher = db.voucher||[];
   db.user = db.user||[]; db.transaksi = db.transaksi||[];
@@ -474,72 +475,32 @@ function renderDashboard(){
       <p class="text-xs text-ink/40 mb-3">12 bulan terakhir</p>
       <div style="height:240px"><canvas id="chart-bulanan"></canvas></div>
     </div>
-    <div class="grid md:grid-cols-2 gap-4">
-      <div class="bg-white border border-line rounded-2xl p-5">
-        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
-          <h3 class="font-display font-semibold">Item Terlaris per Kategori</h3>
-          <div id="dash-terlaris-chips" class="flex flex-wrap gap-1.5"></div>
-        </div>
-        <div id="dash-terlaris-list"></div>
-      </div>
-      <div class="bg-white border border-line rounded-2xl p-5">
-        <h3 class="font-display font-semibold mb-3">Transaksi Terbaru</h3>
-        ${recent.length? recent.map(t=>`<div class="flex justify-between py-1.5 text-sm border-b border-line last:border-0"><span>${esc(t.kasirNama)} · ${t.tanggal.slice(11,16)}</span><span class="font-num">${rupiah(t.total)}</span></div>`).join('') : '<p class="text-sm text-ink/40">Belum ada transaksi.</p>'}
-      </div>
+    <div class="bg-white border border-line rounded-2xl p-5">
+      <h3 class="font-display font-semibold mb-3">Transaksi Terbaru</h3>
+      ${recent.length? recent.map(t=>`<div class="flex justify-between py-1.5 text-sm border-b border-line last:border-0"><span>${esc(t.kasirNama)} · ${t.tanggal.slice(11,16)}</span><span class="font-num">${rupiah(t.total)}</span></div>`).join('') : '<p class="text-sm text-ink/40">Belum ada transaksi.</p>'}
     </div>
     ${stokMenipis.length? `<div class="bg-danger/5 border border-danger/20 rounded-2xl p-5 mt-4">
       <h3 class="font-display font-semibold text-danger mb-2">Stok Menipis (≤5)</h3>
       <div class="flex flex-wrap gap-2">${stokMenipis.map(p=>`<span class="text-xs bg-white border border-danger/30 text-danger px-2.5 py-1 rounded-full">${esc(p.nama)}: ${p.stok}</span>`).join('')}</div>
     </div>`:''}
   `;
-  renderChartMingguan();
-  renderChartBulanan();
-  renderChartKategori();
-  renderDashTerlarisKategori(dashTerlarisPeriode);
+  // urutan sengaja: grafik dibungkus aman — supaya kalau satu gagal dimuat, bagian lain tetap tampil.
+  amanJalankan(renderChartMingguan);
+  amanJalankan(renderChartBulanan);
+  amanJalankan(renderChartKategori);
 }
-let dashTerlarisPeriode = 'hari';
-function renderDashTerlarisKategori(periode, btn){
-  dashTerlarisPeriode = periode || dashTerlarisPeriode;
-  const hariIni = new Date();
-  let dari = '', sampai = todayStr();
-  if(dashTerlarisPeriode==='hari'){ dari = todayStr(); }
-  else if(dashTerlarisPeriode==='minggu'){ dari = startOfWeekStr(hariIni); }
-  else if(dashTerlarisPeriode==='bulan'){ dari = startOfMonthStr(hariIni); }
-  const chipsEl = document.getElementById('dash-terlaris-chips');
-  const periodeChips = [
-    {key:'hari', label:'Hari Ini'},
-    {key:'minggu', label:'Minggu Ini'},
-    {key:'bulan', label:'Bulan Ini'},
-    {key:'semua', label:'Semua'}
-  ];
-  if(chipsEl){
-    chipsEl.innerHTML = periodeChips.map(c=>`<button onclick="renderDashTerlarisKategori('${c.key}')" class="px-2.5 py-1 rounded-full text-[11px] font-medium border ${dashTerlarisPeriode===c.key?'bg-primary text-white border-primary':'bg-white border-line text-ink/60'}">${c.label}</button>`).join('');
-  }
-  let list = db.transaksi;
-  if(dashTerlarisPeriode!=='semua'){
-    list = list.filter(t=>t.tanggal.slice(0,10)>=dari && t.tanggal.slice(0,10)<=sampai);
-  }
-  const perKategoriHitung = {};
-  list.forEach(t=>t.items.forEach(it=>{
-    const kat = ambilKategoriItem(it);
-    if(!perKategoriHitung[kat]) perKategoriHitung[kat] = {};
-    perKategoriHitung[kat][it.nama] = (perKategoriHitung[kat][it.nama]||0) + it.qty;
-  }));
-  const kategoriTerlaris = Object.entries(perKategoriHitung).map(([kat,items])=>({
-    kategori: kat,
-    total: Object.values(items).reduce((s,q)=>s+q,0),
-    items: Object.entries(items).sort((a,b)=>b[1]-a[1]).slice(0,5)
-  })).sort((a,b)=>b.total-a.total);
-  const listEl = document.getElementById('dash-terlaris-list');
-  if(listEl){
-    listEl.innerHTML = kategoriTerlaris.length? kategoriTerlaris.map(k=>`
-      <div class="mb-3 last:mb-0">
-        <div class="text-xs font-semibold uppercase tracking-wide text-primary mb-1">${esc(k.kategori)}</div>
-        ${k.items.map(([n,q])=>`<div class="flex justify-between py-1 text-sm border-b border-line last:border-0"><span>${esc(n)}</span><span class="font-num text-ink/60">${q}</span></div>`).join('')}
-      </div>`).join('') : '<p class="text-sm text-ink/40">Belum ada transaksi pada periode ini.</p>';
-  }
+function amanJalankan(fn){
+  try{ fn(); }
+  catch(e){ console.error('Gagal menggambar grafik:', e); }
+}
+function grafikSiap(canvasId){
+  if(typeof Chart !== 'undefined') return true;
+  const canvas = document.getElementById(canvasId);
+  if(canvas) canvas.outerHTML = '<p class="text-xs text-danger">Grafik tidak dapat dimuat (koneksi internet bermasalah). Tabel & ringkasan lain tetap berjalan normal.</p>';
+  return false;
 }
 function renderChartMingguan(){
+  if(!grafikSiap('chart-mingguan')) return;
   const days = last7Days();
   const labels = days.map(fmtTanggalPendek);
   const data = days.map(d=>{
@@ -554,6 +515,7 @@ function renderChartMingguan(){
   });
 }
 function renderChartBulanan(){
+  if(!grafikSiap('chart-bulanan')) return;
   const months = last12Months();
   const labels = months.map(d=>d.toLocaleDateString('id-ID',{month:'short',year:'2-digit'}));
   const data = months.map(d=>{
@@ -568,6 +530,7 @@ function renderChartBulanan(){
   });
 }
 function renderChartKategori(){
+  if(!grafikSiap('chart-kategori')) return;
   const batas = new Date(); batas.setDate(batas.getDate()-30);
   const perKategori = {};
   db.transaksi.filter(t=>new Date(t.tanggal)>=batas).forEach(t=>{
@@ -948,7 +911,7 @@ function buildReceiptHtml(t){
   }).join('');
   return `
     <div style="text-align:center;">
-      <div style="font-weight:600;font-size:14px;">KASIRKU</div>
+      <div style="font-weight:600;font-size:14px;">AKADEMI KOPI &amp; DIMSUM</div>
       <div>${t.tanggal.slice(0,10)} ${t.tanggal.slice(11,16)}</div>
       ${t.nomorAntrian?`<div>No. Antrian: ${t.nomorAntrian}</div>`:''}
       <div>Kasir: ${esc(t.kasirNama)}</div>
@@ -1145,7 +1108,7 @@ function downloadTemplateExcel(){
   ]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Produk');
-  XLSX.writeFile(wb, 'template-produk-kasirku.xlsx');
+  XLSX.writeFile(wb, 'template-produk-akademi-kopi-dimsum.xlsx');
 }
 
 function handleExcelUpload(evt){
@@ -1593,10 +1556,8 @@ function renderLaporan(){
         </tr></thead><tbody id="laporan-kategori-tbody"></tbody></table></div>
       </div>
       <div class="bg-white border border-line rounded-2xl p-5">
-        <h3 class="font-display font-semibold mb-3">Produk Terlaris (periode ini)</h3>
-        <div class="overflow-x-auto max-h-72 overflow-y-auto"><table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line sticky top-0 bg-white">
-          <th class="pb-2">Produk</th><th class="pb-2">Kategori</th><th class="pb-2 text-right">Qty</th><th class="pb-2 text-right">Omzet</th>
-        </tr></thead><tbody id="laporan-item-tbody"></tbody></table></div>
+        <h3 class="font-display font-semibold mb-3">Item Terlaris per Kategori</h3>
+        <div id="laporan-item-terlaris-kategori" class="max-h-80 overflow-y-auto"></div>
       </div>
     </div>
 
@@ -1652,7 +1613,7 @@ function renderLaporanTable(){
       <td class="py-2 text-right font-num text-ink/50">${omzet? Math.round(v.omzet/omzet*100) : 0}%</td>
     </tr>`).join('') : `<tr><td colspan="4" class="py-6 text-center text-ink/40">Belum ada penjualan pada periode ini.</td></tr>`;
 
-  // rekap per item/produk
+  // item terlaris, dikelompokkan per kategori
   const itemMap = {};
   list.forEach(t=>t.items.forEach(it=>{
     const key = it.produkId || it.nama;
@@ -1660,14 +1621,21 @@ function renderLaporanTable(){
     itemMap[key].qty += it.qty;
     itemMap[key].omzet += it.subtotal;
   }));
-  const itemList = Object.values(itemMap).sort((a,b)=>b.qty-a.qty);
-  document.getElementById('laporan-item-tbody').innerHTML = itemList.length ? itemList.map((v,i)=>`
-    <tr class="border-b border-line last:border-0">
-      <td class="py-2">${i+1}. ${esc(v.nama)}</td>
-      <td class="py-2 text-ink/50 text-xs">${esc(v.kategori)}</td>
-      <td class="py-2 text-right font-num">${v.qty}</td>
-      <td class="py-2 text-right font-num">${rupiah(v.omzet)}</td>
-    </tr>`).join('') : `<tr><td colspan="4" class="py-6 text-center text-ink/40">Belum ada penjualan pada periode ini.</td></tr>`;
+  const perKategoriItem = {};
+  Object.values(itemMap).forEach(v=>{
+    if(!perKategoriItem[v.kategori]) perKategoriItem[v.kategori] = [];
+    perKategoriItem[v.kategori].push(v);
+  });
+  const kategoriItemTerlaris = Object.entries(perKategoriItem).map(([kat,items])=>({
+    kategori: kat,
+    totalQty: items.reduce((s,v)=>s+v.qty,0),
+    items: items.sort((a,b)=>b.qty-a.qty).slice(0,5)
+  })).sort((a,b)=>b.totalQty-a.totalQty);
+  document.getElementById('laporan-item-terlaris-kategori').innerHTML = kategoriItemTerlaris.length ? kategoriItemTerlaris.map(k=>`
+    <div class="mb-3 last:mb-0">
+      <div class="text-xs font-semibold uppercase tracking-wide text-primary mb-1">${esc(k.kategori)}</div>
+      ${k.items.map(v=>`<div class="flex justify-between py-1 text-sm border-b border-line last:border-0"><span>${esc(v.nama)}</span><span class="font-num text-ink/60">${v.qty} <span class="text-ink/40">· ${rupiah(v.omzet)}</span></span></div>`).join('')}
+    </div>`).join('') : '<p class="text-sm text-ink/40 py-4 text-center">Belum ada penjualan pada periode ini.</p>';
 
   // detail transaksi
   document.getElementById('laporan-tbody').innerHTML = list.map(t=>`

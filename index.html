@@ -211,6 +211,15 @@ function kurangiStokProduk(p, qty){
     p.stok = (p.stok||0) - qty;
   }
 }
+function tambahKembaliStokProduk(p, qty){
+  if(!p) return;
+  if(p.mode==='terhubung' && p.stokDasarId){
+    const sd = db.stokDasar.find(x=>x.id===p.stokDasarId);
+    if(sd) sd.stok += (p.isi||1)*qty;
+  } else {
+    p.stok = (p.stok||0) + qty;
+  }
+}
 function hppProduk(p){
   if(p.mode==='terhubung' && p.stokDasarId){
     const sd = db.stokDasar.find(x=>x.id===p.stokDasarId);
@@ -426,7 +435,7 @@ function closeModal(){
 }
 
 /* ============ DASHBOARD (admin only) ============ */
-let chartMingguan=null, chartBulanan=null, chartKategori=null;
+let chartMingguan=null, chartBulanan=null, chartKategori=null, chartItemTerlaris=null;
 function fmtTanggalPendek(d){ return d.toLocaleDateString('id-ID',{weekday:'short',day:'2-digit'}); }
 function last7Days(){
   const arr=[];
@@ -475,6 +484,18 @@ function renderDashboard(){
       <p class="text-xs text-ink/40 mb-3">12 bulan terakhir</p>
       <div style="height:240px"><canvas id="chart-bulanan"></canvas></div>
     </div>
+    <div class="grid lg:grid-cols-3 gap-4 mb-4">
+      <div class="lg:col-span-2 bg-white border border-line rounded-2xl p-5">
+        <h3 class="font-display font-semibold mb-1">Item Terlaris</h3>
+        <p class="text-xs text-ink/40 mb-3">Top 10 item · 30 hari terakhir</p>
+        <div style="height:280px"><canvas id="chart-item-terlaris"></canvas></div>
+      </div>
+      <div class="bg-white border border-line rounded-2xl p-5">
+        <h3 class="font-display font-semibold mb-1">10 Item Terlaris</h3>
+        <p class="text-xs text-ink/40 mb-3">30 hari terakhir</p>
+        <div id="dash-item-terlaris-list"></div>
+      </div>
+    </div>
     <div class="bg-white border border-line rounded-2xl p-5">
       <h3 class="font-display font-semibold mb-3">Transaksi Terbaru</h3>
       ${recent.length? recent.map(t=>`<div class="flex justify-between py-1.5 text-sm border-b border-line last:border-0"><span>${esc(t.kasirNama)} · ${t.tanggal.slice(11,16)}</span><span class="font-num">${rupiah(t.total)}</span></div>`).join('') : '<p class="text-sm text-ink/40">Belum ada transaksi.</p>'}
@@ -484,10 +505,47 @@ function renderDashboard(){
       <div class="flex flex-wrap gap-2">${stokMenipis.map(p=>`<span class="text-xs bg-white border border-danger/30 text-danger px-2.5 py-1 rounded-full">${esc(p.nama)}: ${p.stok}</span>`).join('')}</div>
     </div>`:''}
   `;
+  renderDashItemTerlaris30Hari();
   // urutan sengaja: grafik dibungkus aman — supaya kalau satu gagal dimuat, bagian lain tetap tampil.
   amanJalankan(renderChartMingguan);
   amanJalankan(renderChartBulanan);
   amanJalankan(renderChartKategori);
+  amanJalankan(renderChartItemTerlaris);
+}
+function ambil30HariTerakhir(){
+  const trx = db.transaksi;
+  const map = {};
+  const batas = new Date(); batas.setDate(batas.getDate()-30);
+  trx.filter(t=>new Date(t.tanggal)>=batas).forEach(t=>t.items.forEach(it=>{
+    const key = it.produkId || it.nama;
+    if(!map[key]) map[key] = {nama:it.nama, kategori:ambilKategoriItem(it), qty:0, omzet:0};
+    map[key].qty += it.qty;
+    map[key].omzet += it.subtotal;
+  }));
+  return Object.values(map).sort((a,b)=>b.qty-a.qty).slice(0,10);
+}
+function renderDashItemTerlaris30Hari(){
+  const top10 = ambil30HariTerakhir();
+  const el = document.getElementById('dash-item-terlaris-list');
+  if(el){
+    el.innerHTML = top10.length ? top10.map((v,i)=>`
+      <div class="flex justify-between items-center py-1.5 text-sm border-b border-line last:border-0">
+        <span>${i+1}. ${esc(v.nama)}</span>
+        <span class="font-num text-right"><span class="text-ink/60">${v.qty}</span><br><span class="text-ink/40 text-xs">${rupiah(v.omzet)}</span></span>
+      </div>`).join('') : '<p class="text-sm text-ink/40">Belum ada penjualan dalam 30 hari terakhir.</p>';
+  }
+}
+function renderChartItemTerlaris(){
+  if(!grafikSiap('chart-item-terlaris')) return;
+  const top10 = ambil30HariTerakhir();
+  const labels = top10.map(v=>v.nama);
+  const data = top10.map(v=>v.qty);
+  if(chartItemTerlaris) chartItemTerlaris.destroy();
+  chartItemTerlaris = new Chart(document.getElementById('chart-item-terlaris'), {
+    type:'bar',
+    data:{ labels: labels.length?labels:['Belum ada data'], datasets:[{ label:'Qty Terjual', data: data.length?data:[0], backgroundColor:'#1B6B4D' }]},
+    options:{ indexAxis:'y', responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{x:{ticks:{precision:0}}} }
+  });
 }
 function amanJalankan(fn){
   try{ fn(); }
@@ -1557,7 +1615,9 @@ function renderLaporan(){
       </div>
       <div class="bg-white border border-line rounded-2xl p-5">
         <h3 class="font-display font-semibold mb-3">Item Terlaris per Kategori</h3>
-        <div id="laporan-item-terlaris-kategori" class="max-h-80 overflow-y-auto"></div>
+        <div class="overflow-x-auto max-h-80 overflow-y-auto"><table class="w-full text-sm"><thead><tr class="text-left text-ink/50 border-b border-line sticky top-0 bg-white">
+          <th class="pb-2">Produk</th><th class="pb-2 text-right">Qty</th><th class="pb-2 text-right">Omzet</th>
+        </tr></thead><tbody id="laporan-item-terlaris-kategori"></tbody></table></div>
       </div>
     </div>
 
@@ -1632,10 +1692,12 @@ function renderLaporanTable(){
     items: items.sort((a,b)=>b.qty-a.qty).slice(0,5)
   })).sort((a,b)=>b.totalQty-a.totalQty);
   document.getElementById('laporan-item-terlaris-kategori').innerHTML = kategoriItemTerlaris.length ? kategoriItemTerlaris.map(k=>`
-    <div class="mb-3 last:mb-0">
-      <div class="text-xs font-semibold uppercase tracking-wide text-primary mb-1">${esc(k.kategori)}</div>
-      ${k.items.map(v=>`<div class="flex justify-between py-1 text-sm border-b border-line last:border-0"><span>${esc(v.nama)}</span><span class="font-num text-ink/60">${v.qty} <span class="text-ink/40">· ${rupiah(v.omzet)}</span></span></div>`).join('')}
-    </div>`).join('') : '<p class="text-sm text-ink/40 py-4 text-center">Belum ada penjualan pada periode ini.</p>';
+    <tr class="bg-paper2"><td colspan="3" class="pt-3 pb-1 text-xs font-semibold uppercase tracking-wide text-primary">${esc(k.kategori)}</td></tr>
+    ${k.items.map(v=>`<tr class="border-b border-line last:border-0">
+      <td class="py-1.5">${esc(v.nama)}</td>
+      <td class="py-1.5 text-right font-num">${v.qty}</td>
+      <td class="py-1.5 text-right font-num">${rupiah(v.omzet)}</td>
+    </tr>`).join('')}`).join('') : `<tr><td colspan="3" class="py-6 text-center text-ink/40">Belum ada penjualan pada periode ini.</td></tr>`;
 
   // detail transaksi
   document.getElementById('laporan-tbody').innerHTML = list.map(t=>`
@@ -1648,9 +1710,39 @@ function renderLaporanTable(){
       <td class="p-3 font-num">${rupiah(t.diskon||0)}</td>
       <td class="p-3 font-num font-medium">${rupiah(t.total)}</td>
       <td class="p-3"><span class="text-xs px-2 py-0.5 rounded-full ${t.metodeBayar==='tunai'||!t.metodeBayar?'bg-primary-light text-primary-dark':'bg-amber-light text-amber-dark'}">${labelMetodeBayar(t.metodeBayar)}</span>${t.buktiFoto?`<button onclick="lihatBuktiFoto('${t.id}')" class="block text-primary text-[11px] mt-1">Lihat Bukti</button>`:''}</td>
-      <td class="p-3 text-right"><button onclick="tampilkanStruk('${t.id}')" class="text-primary text-xs">Cetak</button></td>
+      <td class="p-3 text-right whitespace-nowrap"><button onclick="tampilkanStruk('${t.id}')" class="text-primary text-xs">Cetak</button> <button onclick="hapusTransaksi('${t.id}')" class="text-danger text-xs ml-2">Hapus</button></td>
     </tr>`).join('') || `<tr><td colspan="9" class="p-6 text-center text-ink/40">Tidak ada transaksi pada rentang ini.</td></tr>`;
   document.getElementById('laporan-total').textContent = 'Total: ' + rupiah(omzet) + ' (' + jumlahTr + ' transaksi)';
+}
+function hapusTransaksi(id){
+  const t = db.transaksi.find(x=>x.id===id);
+  if(!t) return;
+  openModal(`
+    <h3 class="font-display font-semibold text-lg mb-2">Hapus Pesanan</h3>
+    <p class="text-sm text-ink/60 mb-4">No. Antrian ${t.nomorAntrian||'-'} · ${t.tanggal.slice(0,10)} ${t.tanggal.slice(11,16)} · ${rupiah(t.total)}<br>Tindakan ini tidak bisa dibatalkan.</p>
+    <label class="flex items-center gap-2 text-sm mb-5">
+      <input type="checkbox" id="hapus-kembalikan-stok" checked class="w-4 h-4">
+      Kembalikan stok produk yang terpakai di pesanan ini
+    </label>
+    <div class="flex gap-2">
+      <button onclick="closeModal()" class="flex-1 py-2.5 rounded-lg border border-line text-sm">Batal</button>
+      <button onclick="konfirmasiHapusTransaksi('${id}')" class="flex-1 py-2.5 rounded-lg bg-danger text-white text-sm font-medium">Hapus Pesanan</button>
+    </div>`);
+}
+function konfirmasiHapusTransaksi(id){
+  const t = db.transaksi.find(x=>x.id===id);
+  if(!t) return;
+  const kembalikanStok = document.getElementById('hapus-kembalikan-stok').checked;
+  if(kembalikanStok){
+    t.items.forEach(it=>{
+      const p = db.produk.find(x=>x.id===it.produkId);
+      if(p) tambahKembaliStokProduk(p, it.qty);
+    });
+  }
+  db.transaksi = db.transaksi.filter(x=>x.id!==id);
+  scheduleSave();
+  closeModal();
+  renderLaporanTable();
 }
 
 /* ============ USER ============ */

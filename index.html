@@ -457,7 +457,7 @@ function renderDashboard(){
   const totalHariIni = trToday.reduce((s,t)=>s+t.total,0);
   const jumlahTr = trToday.length;
   const rataRata = jumlahTr? Math.round(totalHariIni/jumlahTr) : 0;
-  const stokMenipis = db.produk.filter(p=>p.stok<=5);
+  const stokMenipis = db.produk.filter(p=>stokEfektif(p)<=5);
   const recent = [...db.transaksi].sort((a,b)=>b.tanggal.localeCompare(a.tanggal)).slice(0,6);
 
   document.getElementById('main-content').innerHTML = `
@@ -502,7 +502,7 @@ function renderDashboard(){
     </div>
     ${stokMenipis.length? `<div class="bg-danger/5 border border-danger/20 rounded-2xl p-5 mt-4">
       <h3 class="font-display font-semibold text-danger mb-2">Stok Menipis (≤5)</h3>
-      <div class="flex flex-wrap gap-2">${stokMenipis.map(p=>`<span class="text-xs bg-white border border-danger/30 text-danger px-2.5 py-1 rounded-full">${esc(p.nama)}: ${p.stok}</span>`).join('')}</div>
+      <div class="flex flex-wrap gap-2">${stokMenipis.map(p=>`<span class="text-xs bg-white border border-danger/30 text-danger px-2.5 py-1 rounded-full">${esc(p.nama)}: ${stokEfektif(p)}</span>`).join('')}</div>
     </div>`:''}
   `;
   renderDashItemTerlaris30Hari();

@@ -673,7 +673,7 @@ function renderKasir(){
       </div>
       <div class="mb-3">
         <label class="text-xs font-medium text-ink/60">Catatan Pesanan (opsional)</label>
-        <input id="catatan-pesanan" placeholder="Misal: less ice, pedas level 2" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
+        <input id="catatan-pesanan" oninput="simpanDraftKasir()" placeholder="Misal: less ice, pedas level 2" class="w-full mt-1 px-3 py-2 border border-line rounded-lg text-sm">
       </div>
       <div class="receipt-dash border-t border-dashed border-line my-3"></div>
       <div id="cart-list" class="space-y-2 max-h-64 overflow-y-auto font-num text-sm"></div>
@@ -690,12 +690,55 @@ function renderKasir(){
   </div>`;
   document.getElementById('main-content').innerHTML = html;
   session.kategoriFilter = null;
-  session.metodeBayar = 'tunai';
-  session.buktiFoto = null;
+  muatDraftKasir();
   renderKategoriChips();
   renderProdukGrid();
   renderCart();
   renderMetodeBayar();
+}
+function muatDraftKasir(){
+  session.metodeBayar = 'tunai';
+  session.buktiFoto = null;
+  session.cart = [];
+  session.member = null;
+  session.voucher = null;
+  let draft = null;
+  try{ draft = JSON.parse(localStorage.getItem('kasirku_draft_kasir') || 'null'); }catch(e){ draft = null; }
+  if(draft && Array.isArray(draft.cart) && draft.cart.length){
+    // hanya pertahankan item yang produknya masih tersedia
+    session.cart = draft.cart.filter(c=>db.produk.some(p=>p.id===c.produkId));
+    if(draft.memberId){
+      const m = db.member.find(x=>x.id===draft.memberId);
+      if(m){
+        session.member = m;
+        document.getElementById('member-hp').value = m.hp||'';
+        document.getElementById('member-info').innerHTML = `<span class="text-primary">${esc(m.nama)} · Poin: ${m.poin||0}</span>`;
+      }
+    }
+    if(draft.voucherKode){
+      const v = db.voucher.find(x=>x.kode===draft.voucherKode);
+      if(v){
+        session.voucher = v;
+        document.getElementById('voucher-kode').value = v.kode;
+        document.getElementById('voucher-info').innerHTML = `<span class="text-primary">Berhasil: ${v.tipe==='persen'?v.nilai+'%':rupiah(v.nilai)} diterapkan.</span>`;
+      }
+    }
+    if(draft.catatan) document.getElementById('catatan-pesanan').value = draft.catatan;
+    if(draft.metodeBayar) session.metodeBayar = draft.metodeBayar;
+  }
+}
+function simpanDraftKasir(){
+  try{
+    if(!session.cart || session.cart.length===0){ localStorage.removeItem('kasirku_draft_kasir'); return; }
+    const catatanEl = document.getElementById('catatan-pesanan');
+    localStorage.setItem('kasirku_draft_kasir', JSON.stringify({
+      cart: session.cart,
+      memberId: session.member ? session.member.id : null,
+      voucherKode: session.voucher ? session.voucher.kode : null,
+      metodeBayar: session.metodeBayar,
+      catatan: catatanEl ? catatanEl.value : ''
+    }));
+  }catch(e){ /* penyimpanan lokal penuh/gagal, abaikan — tidak mengganggu transaksi utama */ }
 }
 function renderKategoriChips(){
   const chips = ['Semua', ...db.kategori];
@@ -758,20 +801,22 @@ function renderCart(){
       </div>
     </div>`).join('') : '<p class="text-ink/40 text-sm">Keranjang kosong.</p>';
   renderSummary();
+  simpanDraftKasir();
 }
 function cariMember(){
   const hp = document.getElementById('member-hp').value.trim();
   const infoEl = document.getElementById('member-info');
-  if(!hp){ session.member=null; infoEl.innerHTML=''; renderSummary(); return; }
+  if(!hp){ session.member=null; infoEl.innerHTML=''; renderSummary(); simpanDraftKasir(); return; }
   const m = db.member.find(x=>x.hp===hp);
   if(!m){ session.member=null; infoEl.innerHTML = '<span class="text-danger">Member tidak ditemukan — transaksi tanpa member.</span>'; }
   else { session.member=m; infoEl.innerHTML = `<span class="text-primary">${esc(m.nama)} · Poin: ${m.poin||0}</span>`; }
   renderSummary();
+  simpanDraftKasir();
 }
 function terapkanVoucher(){
   const kode = document.getElementById('voucher-kode').value.trim().toUpperCase();
   const infoEl = document.getElementById('voucher-info');
-  if(!kode){ session.voucher=null; infoEl.innerHTML=''; renderSummary(); return; }
+  if(!kode){ session.voucher=null; infoEl.innerHTML=''; renderSummary(); simpanDraftKasir(); return; }
   const v = db.voucher.find(x=>x.kode.toUpperCase()===kode);
   const now = todayStr();
   if(!v){ session.voucher=null; infoEl.innerHTML='<span class="text-danger">Kode voucher tidak ditemukan.</span>'; }
@@ -780,6 +825,7 @@ function terapkanVoucher(){
   else if(v.tanggalBerakhir && now>v.tanggalBerakhir){ session.voucher=null; infoEl.innerHTML='<span class="text-danger">Voucher sudah berakhir.</span>'; }
   else{ session.voucher=v; infoEl.innerHTML = `<span class="text-primary">Berhasil: ${v.tipe==='persen'?v.nilai+'%':rupiah(v.nilai)} diterapkan.</span>`; }
   renderSummary();
+  simpanDraftKasir();
 }
 /* ============ MONITORING PESANAN ============ */
 function renderPesanan(){
@@ -863,6 +909,7 @@ function pilihMetodeBayar(m){
   session.metodeBayar = m;
   renderMetodeBayar();
   renderSummary();
+  simpanDraftKasir();
 }
 function renderMetodeBayarArea(){
   const area = document.getElementById('metode-bayar-area');

@@ -279,6 +279,22 @@ async function saveToServer(percobaan){
   percobaan = percobaan || 0;
   const badge = document.getElementById('sync-badge');
   try{
+    // Sebelum menimpa database di server, ambil dulu versi terbaru dan gabungkan
+    // transaksi/riwayat stok yang mungkin baru saja disimpan perangkat lain
+    // (misal kasir lain / admin) tapi belum sempat masuk ke salinan lokal kita.
+    // Ini mencegah transaksi orang lain "hilang tertimpa" saat dua perangkat
+    // menyimpan hampir bersamaan.
+    try{
+      const resCek = await fetch(SCRIPT_URL, {method:'GET', cache:'no-store'});
+      if(resCek.ok){
+        const teksCek = await resCek.text();
+        const dataServer = JSON.parse(teksCek);
+        if(dataServer && dataServer.status !== 'error'){
+          gabungkanDataServerSebelumSimpan(dataServer);
+        }
+      }
+    }catch(eCek){ /* kalau gagal cek versi server, tetap lanjut simpan data lokal */ }
+
     // text/plain dipakai agar browser tidak melakukan CORS preflight ke Apps Script
     const res = await fetch(SCRIPT_URL, {
       method:'POST',
@@ -291,6 +307,7 @@ async function saveToServer(percobaan){
     try{ hasil = JSON.parse(teks); }catch(e){ throw new Error('Respons server tidak valid: ' + teks.slice(0,120)); }
     if(hasil && hasil.status !== 'ok') throw new Error(hasil.pesan || 'Server menolak data yang dikirim.');
     localStorage.removeItem('kasirku_belum_tersimpan');
+    localStorage.setItem('kasirku_cache', JSON.stringify(db));
     if(badge){ badge.textContent = 'Tersimpan'; badge.title=''; badge.onclick=null; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-primary-light text-primary-dark cursor-default'; }
   }catch(e){
     console.error('Gagal menyimpan ke database:', e);
@@ -306,6 +323,22 @@ async function saveToServer(percobaan){
       badge.onclick = ()=>saveToServer(0);
     }
   }
+}
+function gabungkanDataServerSebelumSimpan(dataServer){
+  // Data transaksi & riwayat stok sifatnya "tambah terus" (bukan diedit ulang),
+  // jadi aman digabung berdasarkan id: apa pun yang ada di server tapi belum
+  // ada di salinan lokal kita, ditambahkan — bukan dihapus/ditimpa.
+  ['transaksi','riwayatStok'].forEach(koleksi=>{
+    if(!Array.isArray(dataServer[koleksi])) return;
+    if(!Array.isArray(db[koleksi])) db[koleksi] = [];
+    const idSudahAda = new Set(db[koleksi].map(x=>x.id));
+    dataServer[koleksi].forEach(item=>{
+      if(item && item.id && !idSudahAda.has(item.id)){
+        db[koleksi].push(item);
+        idSudahAda.add(item.id);
+      }
+    });
+  });
 }
 
 window.addEventListener('online', ()=>{

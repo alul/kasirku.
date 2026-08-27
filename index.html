@@ -183,6 +183,21 @@ let SCRIPT_URL = localStorage.getItem('kasirku_script_url') || SCRIPT_URL_BAWAAN
 let saveTimer = null;
 
 let db = { produk:[], kategori:[], stokDasar:[], riwayatStok:[], member:[], voucher:[], user:[], transaksi:[] };
+// Menandai data yang SENGAJA dihapus, supaya server tahu bedanya "sengaja dihapus"
+// vs "kebetulan tidak ada di salinan lokal karena belum sinkron" — jadi tidak ada
+// data yang tertimpa/hilang tanpa sengaja saat beberapa perangkat menyimpan bersamaan.
+let pendingHapus = { produk:[], kategori:[], stokDasar:[], member:[], voucher:[], user:[], transaksi:[] };
+function tandaiHapus(koleksi, nilai){
+  if(!pendingHapus[koleksi].includes(nilai)) pendingHapus[koleksi].push(nilai);
+  try{ localStorage.setItem('kasirku_pending_hapus', JSON.stringify(pendingHapus)); }catch(e){}
+}
+function muatPendingHapus(){
+  try{
+    const raw = localStorage.getItem('kasirku_pending_hapus');
+    if(raw){ const p = JSON.parse(raw); Object.keys(pendingHapus).forEach(k=>{ if(Array.isArray(p[k])) pendingHapus[k]=p[k]; }); }
+  }catch(e){}
+}
+muatPendingHapus();
 let session = { user:null, page:'dashboard', cart:[], member:null, voucher:null, kategoriFilter:null, metodeBayar:'tunai', buktiFoto:null };
 
 function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -284,27 +299,18 @@ async function saveToServer(percobaan){
   percobaan = percobaan || 0;
   const badge = document.getElementById('sync-badge');
   try{
-    // Sebelum menimpa database di server, ambil dulu versi terbaru dan gabungkan
-    // transaksi/riwayat stok yang mungkin baru saja disimpan perangkat lain
-    // (misal kasir lain / admin) tapi belum sempat masuk ke salinan lokal kita.
-    // Ini mencegah transaksi orang lain "hilang tertimpa" saat dua perangkat
-    // menyimpan hampir bersamaan.
-    try{
-      const resCek = await fetch(SCRIPT_URL, {method:'GET', cache:'no-store'});
-      if(resCek.ok){
-        const teksCek = await resCek.text();
-        const dataServer = JSON.parse(teksCek);
-        if(dataServer && dataServer.status !== 'error'){
-          gabungkanDataServerSebelumSimpan(dataServer);
-        }
-      }
-    }catch(eCek){ /* kalau gagal cek versi server, tetap lanjut simpan data lokal */ }
+    // Backend baru (Google Sheets, satu baris per data) menggabungkan data secara
+    // aman per-baris (upsert) dan HANYA menghapus data yang secara eksplisit
+    // ditandai di 'hapus' — jadi tidak perlu lagi cek/gabung manual di sini seperti
+    // sebelumnya. Data yang belum sempat disinkron dari perangkat lain tidak akan
+    // ikut tertimpa/terhapus oleh penyimpanan ini.
+    const bodyKirim = Object.assign({}, db, { hapus: pendingHapus });
 
     // text/plain dipakai agar browser tidak melakukan CORS preflight ke Apps Script
     const res = await fetch(SCRIPT_URL, {
       method:'POST',
       headers:{'Content-Type':'text/plain;charset=utf-8'},
-      body: JSON.stringify(db)
+      body: JSON.stringify(bodyKirim)
     });
     if(!res.ok) throw new Error('Server merespons status ' + res.status);
     const teks = await res.text();
@@ -313,6 +319,9 @@ async function saveToServer(percobaan){
     if(hasil && hasil.status !== 'ok') throw new Error(hasil.pesan || 'Server menolak data yang dikirim.');
     localStorage.removeItem('kasirku_belum_tersimpan');
     localStorage.setItem('kasirku_cache', JSON.stringify(db));
+    // penghapusan sudah berhasil diproses server, kosongkan daftar tunggu
+    pendingHapus = { produk:[], kategori:[], stokDasar:[], member:[], voucher:[], user:[], transaksi:[] };
+    localStorage.removeItem('kasirku_pending_hapus');
     if(badge){ badge.textContent = 'Tersimpan'; badge.title=''; badge.onclick=null; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-primary-light text-primary-dark cursor-default'; }
   }catch(e){
     console.error('Gagal menyimpan ke database:', e);
@@ -328,22 +337,6 @@ async function saveToServer(percobaan){
       badge.onclick = ()=>saveToServer(0);
     }
   }
-}
-function gabungkanDataServerSebelumSimpan(dataServer){
-  // Data transaksi & riwayat stok sifatnya "tambah terus" (bukan diedit ulang),
-  // jadi aman digabung berdasarkan id: apa pun yang ada di server tapi belum
-  // ada di salinan lokal kita, ditambahkan — bukan dihapus/ditimpa.
-  ['transaksi','riwayatStok'].forEach(koleksi=>{
-    if(!Array.isArray(dataServer[koleksi])) return;
-    if(!Array.isArray(db[koleksi])) db[koleksi] = [];
-    const idSudahAda = new Set(db[koleksi].map(x=>x.id));
-    dataServer[koleksi].forEach(item=>{
-      if(item && item.id && !idSudahAda.has(item.id)){
-        db[koleksi].push(item);
-        idSudahAda.add(item.id);
-      }
-    });
-  });
 }
 
 window.addEventListener('online', ()=>{
@@ -1253,7 +1246,7 @@ function simpanProduk(id){
   else{ db.produk.push(Object.assign({id:uid()},data)); }
   scheduleSave(); closeModal(); renderProdukTable();
 }
-function hapusProduk(id){ if(confirm('Hapus produk ini?')){ db.produk = db.produk.filter(x=>x.id!==id); scheduleSave(); renderProdukTable(); } }
+function hapusProduk(id){ if(confirm('Hapus produk ini?')){ db.produk = db.produk.filter(x=>x.id!==id); tandaiHapus('produk', id); scheduleSave(); renderProdukTable(); } }
 
 function downloadTemplateExcel(){
   const ws = XLSX.utils.json_to_sheet([
@@ -1347,6 +1340,7 @@ function hapusKategori(nama){
   if(confirm(pesan)){
     db.kategori = db.kategori.filter(k=>k!==nama);
     db.produk.forEach(p=>{ if(p.kategori===nama) p.kategori=''; });
+    tandaiHapus('kategori', nama);
     scheduleSave(); renderKategoriList();
   }
 }
@@ -1404,7 +1398,7 @@ function simpanStokDasar(id){
 function hapusStokDasar(id){
   const dipakai = db.produk.some(p=>p.mode==='terhubung' && p.stokDasarId===id);
   if(dipakai){ alert('Item ini masih dipakai oleh produk. Ubah produk tersebut ke mode "Stok Sendiri" atau item lain dulu sebelum menghapus.'); return; }
-  if(confirm('Hapus item stok dasar ini?')){ db.stokDasar = db.stokDasar.filter(x=>x.id!==id); scheduleSave(); renderStokDasarTable(); }
+  if(confirm('Hapus item stok dasar ini?')){ db.stokDasar = db.stokDasar.filter(x=>x.id!==id); tandaiHapus('stokDasar', id); scheduleSave(); renderStokDasarTable(); }
 }
 
 /* ============ TAMBAH STOK (dengan riwayat) ============ */
@@ -1586,7 +1580,7 @@ function simpanMember(id){
   else{ db.member.push({id:uid(),nama,hp,poin}); }
   scheduleSave(); closeModal(); renderMemberTable();
 }
-function hapusMember(id){ if(confirm('Hapus member ini?')){ db.member = db.member.filter(x=>x.id!==id); scheduleSave(); renderMemberTable(); } }
+function hapusMember(id){ if(confirm('Hapus member ini?')){ db.member = db.member.filter(x=>x.id!==id); tandaiHapus('member', id); scheduleSave(); renderMemberTable(); } }
 
 /* ============ DISKON / VOUCHER (admin only) ============ */
 function renderDiskon(){
@@ -1658,7 +1652,7 @@ function simpanVoucher(id){
   scheduleSave(); closeModal(); renderVoucherTable();
 }
 function toggleVoucher(id){ const v=db.voucher.find(x=>x.id===id); v.aktif=!v.aktif; scheduleSave(); renderVoucherTable(); }
-function hapusVoucher(id){ if(confirm('Hapus voucher ini?')){ db.voucher=db.voucher.filter(x=>x.id!==id); scheduleSave(); renderVoucherTable(); } }
+function hapusVoucher(id){ if(confirm('Hapus voucher ini?')){ db.voucher=db.voucher.filter(x=>x.id!==id); tandaiHapus('voucher', id); scheduleSave(); renderVoucherTable(); } }
 
 /* ============ LAPORAN TRANSAKSI ============ */
 function startOfWeekStr(d){
@@ -1836,6 +1830,7 @@ function konfirmasiHapusTransaksi(id){
     });
   }
   db.transaksi = db.transaksi.filter(x=>x.id!==id);
+  tandaiHapus('transaksi', id);
   scheduleSave();
   closeModal();
   renderLaporanTable();
@@ -1896,7 +1891,7 @@ function simpanUser(id){
 }
 function hapusUser(id){
   if(id===session.user.id){ alert('Tidak bisa menghapus akun yang sedang digunakan.'); return; }
-  if(confirm('Hapus user ini?')){ db.user=db.user.filter(x=>x.id!==id); scheduleSave(); renderUserTable(); }
+  if(confirm('Hapus user ini?')){ db.user=db.user.filter(x=>x.id!==id); tandaiHapus('user', id); scheduleSave(); renderUserTable(); }
 }
 
 /* ============ INIT ============ */

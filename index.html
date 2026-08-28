@@ -259,15 +259,81 @@ async function connectDatabase(){
   errEl.classList.add('hidden');
   try{
     await loadFromServer();
+    // Kalau perangkat ini punya perubahan yang belum sempat tersimpan (misal
+    // tadi sempat offline), jangan pakai data server begitu saja — pulihkan
+    // dulu salinan lokal yang lebih baru (berisi perubahan itu), lalu segera
+    // coba kirim ke server. Aman berkat backend yang cuma menambah/menimpa
+    // baris yang relevan (bukan menimpa seluruh database).
+    if(localStorage.getItem('kasirku_belum_tersimpan')==='1'){
+      try{
+        const cache = JSON.parse(localStorage.getItem('kasirku_cache')||'null');
+        if(cache) db = cache;
+      }catch(e){ /* cache rusak, pakai data server saja */ }
+    }
+    setStatusOffline(false);
     document.getElementById('setup-screen').classList.add('hidden');
     document.getElementById('login-screen').classList.remove('hidden');
     document.getElementById('login-screen').classList.add('flex');
+    if(localStorage.getItem('kasirku_belum_tersimpan')==='1'){ saveToServer(0); }
   }catch(e){
+    // Tidak bisa menghubungi server (biasanya karena internet mati/lemah).
+    // Kalau ada salinan data tersimpan di perangkat ini, tetap lanjutkan
+    // pakai data itu supaya aplikasi tetap bisa dipakai (transaksi baru akan
+    // tertampung dulu di perangkat, lalu otomatis disinkronkan begitu
+    // koneksi kembali normal).
+    const cache = (()=>{ try{ return JSON.parse(localStorage.getItem('kasirku_cache')||'null'); }catch(err){ return null; } })();
+    if(cache){
+      db = cache;
+      setStatusOffline(true);
+      document.getElementById('setup-screen').classList.add('hidden');
+      document.getElementById('login-screen').classList.remove('hidden');
+      document.getElementById('login-screen').classList.add('flex');
+      mulaiCobaSambungUlangOtomatis();
+      return;
+    }
     document.getElementById('setup-screen').classList.remove('hidden');
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('login-screen').classList.remove('flex');
     errEl.textContent = 'Gagal terhubung ke database: ' + e.message;
     errEl.classList.remove('hidden');
+    mulaiCobaSambungUlangOtomatis();
+  }
+}
+
+// Selama offline / belum berhasil sinkron sama sekali, coba diam-diam
+// sambung ulang tiap beberapa detik — tanpa perlu pengguna menekan tombol.
+let cobaSambungTimer = null;
+function mulaiCobaSambungUlangOtomatis(){
+  if(cobaSambungTimer) return;
+  cobaSambungTimer = setInterval(async ()=>{
+    try{
+      const res = await fetch(SCRIPT_URL, {method:'GET', cache:'no-store'});
+      if(res.ok){
+        clearInterval(cobaSambungTimer);
+        cobaSambungTimer = null;
+        // Kalau masih di layar setup (belum sempat masuk sama sekali), sambung dari awal.
+        // Kalau sudah terlanjur jalan pakai cache offline, cukup update status & kirim
+        // perubahan yang tertunda tanpa mengganggu apa yang sedang dikerjakan pengguna.
+        if(!document.getElementById('setup-screen').classList.contains('hidden')){
+          connectDatabase();
+        } else {
+          setStatusOffline(false);
+          if(localStorage.getItem('kasirku_belum_tersimpan')==='1'){ saveToServer(0); }
+          if(session.user) mulaiSinkronOtomatis();
+        }
+      }
+    }catch(e){ /* masih belum tersambung, coba lagi di siklus berikutnya */ }
+  }, 5000);
+}
+
+function setStatusOffline(offline){
+  const badge = document.getElementById('sync-badge');
+  if(!badge) return;
+  if(offline){
+    badge.textContent = 'Offline — data tertampung, akan sinkron otomatis';
+    badge.title = 'Tidak ada koneksi internet. Transaksi & perubahan tetap tersimpan di perangkat ini dan akan otomatis dikirim begitu internet kembali.';
+    badge.className = 'text-xs font-num px-2.5 py-1 rounded-full bg-amber-light text-amber-dark cursor-default';
+    badge.onclick = null;
   }
 }
 
@@ -276,7 +342,16 @@ function gantiDatabase(){
 }
 
 async function loadFromServer(){
-  const res = await fetch(SCRIPT_URL, {method:'GET'});
+  const kontrol = new AbortController();
+  const batasWaktu = setTimeout(()=>kontrol.abort(), 10000); // jangan sampai nyangkut lama kalau koneksi jelek
+  let res;
+  try{
+    res = await fetch(SCRIPT_URL, {method:'GET', signal: kontrol.signal});
+  }catch(e){
+    throw new Error(e.name==='AbortError' ? 'Koneksi terlalu lama merespons (timeout).' : 'Tidak bisa menghubungi server.');
+  }finally{
+    clearTimeout(batasWaktu);
+  }
   if(!res.ok) throw new Error('Server merespons status ' + res.status);
   const text = await res.text();
   try{ db = JSON.parse(text); }catch(e){ throw new Error('URL benar tapi bukan database yang valid.'); }
@@ -288,7 +363,11 @@ async function loadFromServer(){
 
 function scheduleSave(){
   const badge = document.getElementById('sync-badge');
-  if(badge){ badge.textContent = 'Menyimpan...'; badge.title=''; badge.onclick=null; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-amber-light text-amber-dark cursor-default'; }
+  if(navigator.onLine===false){
+    setStatusOffline(true);
+  } else if(badge){
+    badge.textContent = 'Menyimpan...'; badge.title=''; badge.onclick=null; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-amber-light text-amber-dark cursor-default';
+  }
   localStorage.setItem('kasirku_cache', JSON.stringify(db));
   localStorage.setItem('kasirku_belum_tersimpan', '1');
   clearTimeout(saveTimer);
@@ -325,6 +404,13 @@ async function saveToServer(percobaan){
     if(badge){ badge.textContent = 'Tersimpan'; badge.title=''; badge.onclick=null; badge.className='text-xs font-num px-2.5 py-1 rounded-full bg-primary-light text-primary-dark cursor-default'; }
   }catch(e){
     console.error('Gagal menyimpan ke database:', e);
+    if(navigator.onLine===false){
+      // Sudah pasti karena tidak ada internet — tak perlu coba berkali-kali
+      // sekarang, cukup tunggu event 'online' (atau sinkronisasi berikutnya)
+      // yang akan otomatis mengirim data ini begitu koneksi kembali.
+      setStatusOffline(true);
+      return;
+    }
     if(percobaan < 2){
       // coba lagi otomatis (1x setelah 1.5 detik, 1x setelah 3 detik)
       setTimeout(()=>saveToServer(percobaan+1), 1500 * (percobaan+1));
@@ -340,7 +426,12 @@ async function saveToServer(percobaan){
 }
 
 window.addEventListener('online', ()=>{
+  setStatusOffline(false);
+  if(session.user) mulaiSinkronOtomatis();
   if(localStorage.getItem('kasirku_belum_tersimpan')==='1' && typeof db!=='undefined' && db){ saveToServer(0); }
+});
+window.addEventListener('offline', ()=>{
+  setStatusOffline(true);
 });
 
 /* ============ AUTH (app-level) ============ */
